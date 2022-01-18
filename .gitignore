@@ -1,0 +1,8 @@
+*.pyc
+.venv
+.mypy_cache
+.pytest_cache
+.vscode
+.idea
+.tox
+report
