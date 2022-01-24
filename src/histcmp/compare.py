@@ -19,7 +19,9 @@ import ROOT
 
 
 def can_handle_item(item) -> bool:
-    return isinstance(item, ROOT.TH1)  # and not isinstance(item, ROOT.TH2)
+    return isinstance(item, ROOT.TH1) or isinstance(
+        item, ROOT.TEfficiency
+    )  # and not isinstance(item, ROOT.TH2)
 
 
 def compare(a: Path, b: Path):
@@ -39,16 +41,19 @@ def compare(a: Path, b: Path):
     )
 
     for key in track(sorted(common), console=console, description="Comparing..."):
-        console.rule(f"{key}")
+
         item_a = rf_a.Get(key)
         item_b = rf_b.Get(key)
 
         if type(item_a) != type(item_b):
+            console.rule(f"{key}")
             fail(
                 f"Type mismatch between files for key {key}: {item_a} != {type(item_b)} => treating as both removed and newly added"
             )
             removed.add(key)
             new.add(key)
+
+        console.rule(f"{key} ({item_a.__class__.__name__})")
 
         if not can_handle_item(item_a):
             warn(f"Unable to handle item of type {type(item_a)}")
@@ -72,15 +77,6 @@ def compare(a: Path, b: Path):
                     console.print(":red_circle:", inst, inst.label(), style="bold red")
             else:
                 console.print(":yellow_circle:", inst, style="yellow")
-
-        int_a, err_a = integralAndError(item_a)
-        int_b, err_b = integralAndError(item_b)
-
-        sigma = 0
-        if err_a > 0.0:
-            sigma = (int_a - int_b) / err_a
-
-        #  print(type(item_a))
 
     info(f"{len(removed)} elements are missing in new file")
     info(f"{len(new)} elements are added new file")

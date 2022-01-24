@@ -89,10 +89,15 @@ class KolmogorovTest(ScoreThresholdCheck):
 
         super().__init__(threshold=threshold, op=operator.gt)
 
+    @functools.cache
     def get_score(self) -> float:
         return self.item_a.KolmogorovTest(self.item_b)
 
+    @functools.cache
     def is_applicable(self) -> bool:
+        if isinstance(self.item_a, ROOT.TEfficiency):
+            self.item_a = self.item_a.CreateGraph().GetHistogram()
+            self.item_b = self.item_b.CreateGraph().GetHistogram()
         int_a, _ = integralAndError(self.item_a)
         int_b, _ = integralAndError(self.item_b)
         return int_a != 0 and int_b != 0
@@ -106,49 +111,47 @@ class Chi2Test(ScoreThresholdCheck):
         self.item_a = item_a
         self.item_b = item_b
         self.threshold = threshold
-        self._result_v = None
 
         super().__init__(threshold=threshold, op=operator.gt)
 
-    def _result(self):
-        if self._result_v is None:
-            opt = "P"
-            error_ignore = ROOT.gErrorIgnoreLevel
-            try:
-                ROOT.gErrorIgnoreLevel = ROOT.kWarning
+    @functools.cached_property
+    def _result_v(self):
+        opt = "P"
+        error_ignore = ROOT.gErrorIgnoreLevel
+        try:
+            ROOT.gErrorIgnoreLevel = ROOT.kWarning
 
-                self._result_v = chi2result(
-                    *ROOT.MyChi2Test(self.item_a, self.item_b, opt)
-                )
-                #  print(self._result_v)
-                #  nbins = self.item_a.GetXaxis().GetNbins() - 2
-                #  arr = self._result_v.res
-                #  arr.reshape((nbins,))
-                #  v = numpy.frombuffer(arr, dtype=numpy.float64, count=nbins)
-                #  print(v)
-                #  print(self._result_v.res)
+            self._result_v = chi2result(*ROOT.MyChi2Test(self.item_a, self.item_b, opt))
+            #  print(self._result_v)
+            #  nbins = self.item_a.GetXaxis().GetNbins() - 2
+            #  arr = self._result_v.res
+            #  arr.reshape((nbins,))
+            #  v = numpy.frombuffer(arr, dtype=numpy.float64, count=nbins)
+            #  print(v)
+            #  print(self._result_v.res)
 
-                #  prob = self.item_a.Chi2TestX(
-                #  self.item_b, chi2, ndf, igood, opt, ctypes.pointer(res)
-                #  )
+            #  prob = self.item_a.Chi2TestX(
+            #  self.item_b, chi2, ndf, igood, opt, ctypes.pointer(res)
+            #  )
 
-                #  return self.item_a.Chi2Test(self.item_b, opt)
-            finally:
-                ROOT.gErrorIgnoreLevel = error_ignore
+            #  return self.item_a.Chi2Test(self.item_b, opt)
+        finally:
+            ROOT.gErrorIgnoreLevel = error_ignore
 
         return self._result_v
 
     def get_score(self) -> float:
-        res = self._result()
+        res = self._result_v
         return res.prob
 
+    @functools.cache
     def is_applicable(self) -> bool:
         int_a, _ = integralAndError(self.item_a)
         int_b, _ = integralAndError(self.item_b)
         if int_a == 0 or int_b == 0:
             return False
 
-        res = self._result()
+        res = self._result_v
         #  if res.igood != 0:
         #  return False
         if res.ndf == -1:
@@ -176,10 +179,13 @@ class Chi2Test(ScoreThresholdCheck):
 
 class IntegralCheck(ScoreThresholdCheck):
     def __init__(self, item_a, item_b, threshold: float = 1.0):
+        self.sigma = float("inf")
+        if not isinstance(item_a, ROOT.TH1):
+            return
+
         int_a, err_a = integralAndError(item_a)
         int_b, err_b = integralAndError(item_b)
 
-        self.sigma = float("inf")
         if err_a > 0.0:
             self.sigma = numpy.abs(int_a - int_b) / err_a
 
@@ -228,13 +234,18 @@ class RatioCheck(CompatCheck):
 class ResidualCheck(CompatCheck):
     def __init__(self, item_a, item_b, threshold=1):
         self.threshold = threshold
+        self.item_a = item_a
+        self.item_b = item_b
+
+        if isinstance(self.item_a, ROOT.TEfficiency):
+            self.item_a = self.item_a.CreateGraph().GetHistogram()
+            self.item_b = self.item_b.CreateGraph().GetHistogram()
 
         try:
-            self.residual = item_a.Clone()
-            self.residual.Add(item_b, -1)
+            self.residual = self.item_a.Clone()
+            self.residual.Add(self.item_b, -1)
             self.applicable = True
         except Exception:
-            raise
             self.applicable = False
 
     def is_applicable(self) -> bool:
