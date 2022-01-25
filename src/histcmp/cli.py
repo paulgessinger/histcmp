@@ -1,7 +1,14 @@
 from pathlib import Path
+from typing import Optional
 
 import typer
-from wasabi import msg
+from rich.traceback import install
+import jinja2
+
+from histcmp.console import fail, info, console
+from histcmp.report import make_report
+
+#  install(show_locals=True)
 
 app = typer.Typer()
 
@@ -10,17 +17,29 @@ app = typer.Typer()
 def main(
     previous: Path = typer.Argument(..., exists=True, dir_okay=False),
     current: Path = typer.Argument(..., exists=True, dir_okay=False),
+    output: Optional[Path] = typer.Option(None, "-o", "--output", file_okay=False),
 ):
     try:
         import ROOT
     except ImportError:
-        msg.fail("ROOT could not be imported")
+        fail("ROOT could not be imported")
         return
 
     from histcmp.compare import compare
 
-    msg.info(f"Comparing files:")
-    msg.info(f"Previous: {previous}")
-    msg.info(f"Current: {current}")
+    info(f"Comparing files:")
+    info(f"Previous: {previous}")
+    info(f"Current: {current}")
 
-    compare(previous, current)
+    try:
+        comparison = compare(previous, current)
+
+        if output is not None:
+            if not output.exists():
+                output.mkdir()
+            make_report(comparison, output)
+    except Exception as e:
+        if isinstance(e, jinja2.exceptions.TemplateRuntimeError):
+            raise e
+        raise
+        #  console.print_exception(show_locals=True)

@@ -1,9 +1,12 @@
 import numpy
 import operator
-from abc import ABC, abstractmethod
+from abc import ABC, abstractmethod, abstractproperty
 import collections
+from pathlib import Path
 import ctypes
 import functools
+from enum import Enum
+from typing import Tuple, Optional
 
 import ROOT
 
@@ -12,6 +15,13 @@ from histcmp.root_helpers import (
     get_bin_content,
     get_bin_content_error,
 )
+
+
+class Status(Enum):
+    SUCCESS = 1
+    FAILURE = 2
+    INCONCLUSIVE = 3
+
 
 ROOT.gInterpreter.Declare(
     """
@@ -37,6 +47,10 @@ chi2result = collections.namedtuple(
 
 
 class CompatCheck(ABC):
+    def __init__(self):
+        print("COMPAT CHECK INIT")
+        self._plot = None
+
     @abstractmethod
     def is_valid(self) -> bool:
         raise NotImplementedError()
@@ -49,11 +63,32 @@ class CompatCheck(ABC):
     def label(self) -> str:
         raise NotImplementedError()
 
+    @property
+    def status(self) -> Status:
+        if not self.is_applicable():
+            return Status.INCONCLUSIVE
+        if self.is_valid():
+            return Status.SUCCESS
+        else:
+            return Status.FAILURE
+
+    def make_plot(self, output: Path) -> Optional[Path]:
+        return None
+
+    def ensure_plot(self, key: str, output_dir: Path) -> None:
+        if self._plot is not None:
+            return
+        self._plot = self.make_plot(output_dir / f"{key}_{self}.png")
+
+    def get_plot(self) -> Optional[Path]:
+        return self._plot
+
 
 class ScoreThresholdCheck(CompatCheck):
     def __init__(self, threshold: float, op):
         self.threshold = threshold
         self.op = op
+        super().__init__()
 
     @abstractmethod
     def get_score() -> float:
@@ -179,6 +214,7 @@ class Chi2Test(ScoreThresholdCheck):
 
 class IntegralCheck(ScoreThresholdCheck):
     def __init__(self, item_a, item_b, threshold: float = 1.0):
+        super().__init__(threshold=threshold, op=operator.lt)
         self.sigma = float("inf")
         if not isinstance(item_a, ROOT.TH1):
             return
@@ -188,8 +224,6 @@ class IntegralCheck(ScoreThresholdCheck):
 
         if err_a > 0.0:
             self.sigma = numpy.abs(int_a - int_b) / err_a
-
-        super().__init__(threshold=threshold, op=operator.lt)
 
     def get_score(self) -> float:
         return self.sigma
@@ -202,30 +236,55 @@ class IntegralCheck(ScoreThresholdCheck):
 
 
 class RatioCheck(CompatCheck):
-    def __init__(self, item_a, item_b):
+    def __init__(self, item_a, item_b, threshold: float = 1):
         #  self.val_a, self.err_a = get_bin_content_error(item_a)
         #  self.val_b, self.err_b = get_bin_content_error(item_b)
         #  self.ratio = self.val_a / self.val_b
+        self.ratio = None
+        self.threshold = threshold
+
+        super().__init__()
+
+        if isinstance(item_a, ROOT.TEfficiency):
+            self.applicable = False
+            return
 
         try:
-            self.ratio = item_a.Clone()
-            self.ratio.Divide(item_b)
+            ratio = item_a.Clone()
+            ratio.SetDirectory(0)
+            ratio.Divide(item_b)
             self.applicable = True
+            self.ratio = ratio
         except Exception:
             self.applicable = False
 
+    def make_plot(self, output: Path) -> Optional[Path]:
+        if not self.applicable:
+            return None
+        print("MAKE PLOT", output)
+        c = ROOT.TCanvas("c1", "c1")
+        self.ratio.Draw()
+        c.SaveAs(str(output))
+
     def is_applicable(self) -> bool:
-        return self.applicable
+        return self.applicable and self.ratio is not None
+
+    @functools.cache
+    def _ratio(self):
+        ratio, err = get_bin_content_error(self.ratio)
+        m = ratio != 0.0
+        ratio[m] = ratio[m] - 1
+
+        me = err != 0.0
+
+        return ratio[m & me] / err[m & me]
 
     def is_valid(self) -> bool:
-        raise NotImplemented()
-        ratio, err = get_bin_content_error(self.ratio)
-        print(ratio)
-        print(err)
-        return False
+        return numpy.all(self._ratio() < self.threshold)
 
     def label(self) -> str:
-        return "ratio"
+        n = numpy.sum(self._ratio() >= self.threshold)
+        return f"(a/b - 1) / sigma(a/b) > {self.threshold} for {n} bins"
 
     def __str__(self) -> str:
         return "RatioCheck"
@@ -237,12 +296,15 @@ class ResidualCheck(CompatCheck):
         self.item_a = item_a
         self.item_b = item_b
 
+        super().__init__()
+
         if isinstance(self.item_a, ROOT.TEfficiency):
             self.item_a = self.item_a.CreateGraph().GetHistogram()
             self.item_b = self.item_b.CreateGraph().GetHistogram()
 
         try:
             self.residual = self.item_a.Clone()
+            self.residual.SetDirectory(0)
             self.residual.Add(self.item_b, -1)
             self.applicable = True
         except Exception:

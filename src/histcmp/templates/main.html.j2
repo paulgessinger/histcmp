@@ -1,0 +1,59 @@
+{% extends "base.html.j2" %}
+
+{% block body %}
+    {% for item in comparison.common %}
+    <a href="#{{ item.key }}" title="{{ item.key }}">
+    {% if item.status == Status.SUCCESS %}
+    {{ ":check_mark_button:" | emojize }}
+    {% elif item.status == Status.FAILURE %}
+    {{ ":red_circle:" | emojize }}
+    {% else %}
+    {{ ":yellow_circle:" | emojize }}
+    {% endif %}
+    </a>
+    {% endfor %}
+    <hr>
+    {% for item in comparison.common %}
+    <div class="box">
+        <h2 class="title {% if item.status == Status.FAILURE -%}
+        has-text-danger
+        {%- elif item.status == Status.INCONCLUSIVE -%}
+        has-text-warning
+        {%- endif -%}" id="{{ item.key }}">{{ item.key }}</h2>
+        <div x-data="{open: 0}">
+            <div class="tabs">
+                <ul>
+                    {% for check in item.checks %}
+                    <li :class="open == {{loop.index-1}} ? 'is-active' : ''">
+                    <a @click="open = {{loop.index-1}}"
+                    {% if check.status == Status.SUCCESS %}
+                    class="has-text-success" 
+                        {{ ":check_mark_button:" | emojize }}
+                    {% elif check.status == Status.FAILURE %}
+                    class="has-text-danger"
+                        {{ ":red_circle:" | emojize }}
+                    {% elif check.status == Status.INCONCLUSIVE %}
+                    class="has-text-warning"
+                        {{ ":yellow_circle:" | emojize }}
+                    {% endif %}
+                    >
+                        {{ check }}</a></li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% for check in item.checks %}
+                <div x-show="open == {{loop.index-1}}">
+                    {% if check.is_applicable() %}
+                    {{ check.label() }}
+                    {% if check.get_plot() is not none %}
+                        {{check.get_plot()}}
+                    {% endif %}
+                    {% else %}
+                    {{check}} is not applicable
+                    {% endif %}
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+{% endblock %}

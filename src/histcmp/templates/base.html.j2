@@ -4,59 +4,32 @@
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta http-equiv="Cache-control" content="max-age=0">
-        <script src="{{ static_url("chart.min.js") }}"></script> 
         <link href="{{ static_url("css/bulma/bulma.min.css") }}" rel="stylesheet">
+        <script src="{{ static_url("alpinejs.min.js") }}"></script>
         {% block head %}
         {% endblock %}
     </head>
     <body>
         <div class="container">
-            <div class="columns is-fullheight">
-            {% block body %}
-                <div class="column is-4-desktop is-one-third-tablet is-12-mobile ">
-                    {# <div class="box"> #}
-                    {% block sidebar %}
-
-                    <aside class="menu section">
-                        <p class="menu-label">Metrics</p>
-                        <ul class="menu-list">
-                        {% for grp, mtrcs in metrics|dictsort %}
-                            <li><a class="
-                            {%- if group == grp -%}
-                            is-active
-                            {%- endif -%}
-                            " href="{{ group_url(grp) }}">{{ grp }}
-                            </a>
-                            
-                            {% if is_group_active(grp) %}
-
-                            <ul class="menu-list">
-                            {% for metric in mtrcs|sort(attribute="name") %}
-                                <li><a class="
-                                {%- if metric_url(metric) == url_for(current_url()) -%}
-                                is-active
-                                {%- endif -%}
-                                " href="{{ metric_url(metric) }}">{{ metric.name|smart_truncate(30) }}
-                                </a></li>
-                            {% endfor %}
-                            </ul>
-
-                            {% endif %}
-                            </li>
-                        {% endfor %}
-                        </ul>
-                    </aside>
-
-                    {% endblock %}
-                    {# </div> #}
-                </div>
-                <div class="column ">
-                    <div class="box mt-5">
-                    {% block maincol %}
-                    {% endblock %}
+            <div class="block">
+                <section class="hero">
+                    <div class="hero-body">
+                        <p class="title">
+                            Histogram comparison
+                        </p>
+                        <p class="subtitle">
+                            {{ comparison.file_a }} vs. {{ comparison.file_b }}
+                        </p>
+                    </div>
+                </section>
+                <div class="columns is-fullheight is-centered">
+                    <div class="column is-full">
+                        <div class="box">
+                        {% block body %}
+                        {% endblock %}
+                        </div>
                     </div>
                 </div>
-            {% endblock %}
             </div>
         </div>
     </body>

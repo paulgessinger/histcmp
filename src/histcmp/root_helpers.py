@@ -58,4 +58,4 @@ def get_bin_content_error(item) -> numpy.array:
             ),
         )
     else:
-        raise TypeError("Invalid type")
+        raise TypeError(f"Invalid type {type(item)}")

@@ -1,9 +1,9 @@
 from pathlib import Path
 from typing import Tuple, List, Any
-import dataclasses
+import functools
 
 from rich.progress import track
-import time
+from pydantic import BaseModel
 
 
 from histcmp.console import console, fail, info, good, warn
@@ -15,21 +15,41 @@ from histcmp.checks import (
     IntegralCheck,
     RatioCheck,
     ResidualCheck,
+    Status,
 )
 
 import ROOT
 
 
-@dataclasses.dataclass
-class ComparisonItem:
+class ComparisonItem(BaseModel):
+    class Config:
+        arbitrary_types_allowed = True
+        keep_untouched = (functools.cached_property,)
+
     key: str
     item_a: Any
     item_b: Any
     checks: List[CompatCheck] = []
 
+    @functools.cached_property
+    def status(self) -> Status:
+        statuses = [c.status for c in self.checks]
+        if any(s == Status.FAILURE for s in statuses):
+            return Status.FAILURE
+        if all(s == Status.SUCCESS for s in statuses):
+            return Status.SUCCESS
+        if any(s == Status.SUCCESS for s in statuses):
+            return Status.SUCCESS
 
-@dataclasses.dataclass
-class Comparison:
+        return Status.INCONCLUSIVE
+        #  raise RuntimeError("Shouldn't happen")
+
+    def ensure_plots(self, output: Path):
+        for check in self.checks:
+            check.ensure_plot(self.key, output)
+
+
+class Comparison(BaseModel):
     file_a: str
     file_b: str
     common: List[ComparisonItem] = []
@@ -78,15 +98,17 @@ def compare(a: Path, b: Path) -> Comparison:
             warn(f"Unable to handle item of type {type(item_a)}")
             continue
 
+        item = ComparisonItem(key=key, item_a=item_a, item_b=item_b)
+
         for test in (
             KolmogorovTest,
+            RatioCheck,
             #  Chi2Test,
             ResidualCheck,
             IntegralCheck,
         ):
             inst = test(item_a, item_b)
-            #  print(get_bin_content(item_a))
-            #  print(get_bin_content(item_b))
+            item.checks.append(inst)
             if inst.is_applicable():
                 if inst.is_valid():
                     console.print(
@@ -96,6 +118,7 @@ def compare(a: Path, b: Path) -> Comparison:
                     console.print(":red_circle:", inst, inst.label(), style="bold red")
             else:
                 console.print(":yellow_circle:", inst, style="yellow")
+        result.common.append(item)
 
     info(f"{len(removed)} elements are missing in new file")
     info(f"{len(new)} elements are added new file")

@@ -5,8 +5,12 @@ from typing import Union
 import contextlib
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import re
+from emoji import emojize
 
 import jinja2
+
+from histcmp.compare import Comparison
+from histcmp.checks import Status
 
 current_depth = 0
 current_url = "/"
@@ -86,13 +90,15 @@ def get_current_url():
 
 
 def make_environment() -> jinja2.Environment:
-    env = jinja2.Environment(loader=jinja2.PackageLoader(package_name="headwind"))
+    env = jinja2.Environment(loader=jinja2.PackageLoader(package_name="histcmp"))
 
     env.globals["static_url"] = static_url
 
     env.globals["url_for"] = url_for
     env.globals["current_url"] = get_current_url
+    env.globals["Status"] = Status
 
+    env.filters["emojize"] = emojize
     #  env.filters["dateformat"] = dateformat
 
     return env
@@ -107,4 +113,19 @@ def copy_static(output: Path) -> None:
     shutil.copytree(static, dest)
 
 
-#  def make_report()
+def make_report(comparison: Comparison, output: Path):
+
+    copy_static(output)
+
+    env = make_environment()
+
+    plot_dir = output / "plots"
+    plot_dir.mkdir(exist_ok=True)
+
+    for item in comparison.common:
+        item.ensure_plots(plot_dir)
+    #  for check in item.checks:
+    #  check.ensure_plot(plot_dir)
+
+    with (output / "index.html").open("w") as fh:
+        fh.write(env.get_template("main.html.j2").render(comparison=comparison))
