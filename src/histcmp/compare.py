@@ -1,5 +1,6 @@
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, List, Any
+import dataclasses
 
 from rich.progress import track
 import time
@@ -8,6 +9,7 @@ import time
 from histcmp.console import console, fail, info, good, warn
 from histcmp.root_helpers import integralAndError, get_bin_content
 from histcmp.checks import (
+    CompatCheck,
     Chi2Test,
     KolmogorovTest,
     IntegralCheck,
@@ -18,13 +20,28 @@ from histcmp.checks import (
 import ROOT
 
 
+@dataclasses.dataclass
+class ComparisonItem:
+    key: str
+    item_a: Any
+    item_b: Any
+    checks: List[CompatCheck] = []
+
+
+@dataclasses.dataclass
+class Comparison:
+    file_a: str
+    file_b: str
+    common: List[ComparisonItem] = []
+
+
 def can_handle_item(item) -> bool:
     return isinstance(item, ROOT.TH1) or isinstance(
         item, ROOT.TEfficiency
     )  # and not isinstance(item, ROOT.TH2)
 
 
-def compare(a: Path, b: Path):
+def compare(a: Path, b: Path) -> Comparison:
     rf_a = ROOT.TFile.Open(str(a))
     rf_b = ROOT.TFile.Open(str(b))
 
@@ -39,6 +56,8 @@ def compare(a: Path, b: Path):
     console.print(
         f":information: {len(common)} common elements between files", style="info"
     )
+
+    result = Comparison(file_a=str(a), file_b=str(b))
 
     for key in track(sorted(common), console=console, description="Comparing..."):
 
@@ -80,3 +99,5 @@ def compare(a: Path, b: Path):
 
     info(f"{len(removed)} elements are missing in new file")
     info(f"{len(new)} elements are added new file")
+
+    return result

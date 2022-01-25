@@ -6,3 +6,6 @@
 .idea
 .tox
 report
+.DS_Store
+.vim/
+Session.vim
