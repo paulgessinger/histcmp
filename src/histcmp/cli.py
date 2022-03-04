@@ -2,11 +2,14 @@ from pathlib import Path
 from typing import Optional
 
 import typer
-from rich.traceback import install
+from rich.panel import Panel
+from rich.text import Text
+from rich.emoji import Emoji
 import jinja2
 
 from histcmp.console import fail, info, console
 from histcmp.report import make_report
+from histcmp.checks import Status
 
 #  install(show_locals=True)
 
@@ -24,6 +27,7 @@ def main(
     except ImportError:
         fail("ROOT could not be imported")
         return
+    ROOT.gROOT.SetBatch(ROOT.kTRUE)
 
     from histcmp.compare import compare
 
@@ -38,6 +42,27 @@ def main(
             if not output.exists():
                 output.mkdir()
             make_report(comparison, output)
+
+        status = Status.SUCCESS
+        style = "bold green"
+
+        if any(c.status == Status.FAILURE for c in comparison.common):
+            status = Status.FAILURE
+            style = "bold red"
+        if all(c.status == Status.INCONCLUSIVE for c in comparison.common):
+            status = Status.INCONCLUSIVE
+            style = "bold yellow"
+
+        console.print(
+            Panel(
+                Text(f"{Emoji.replace(status.icon)} {status.name}", justify="center"),
+                style=style,
+            )
+        )
+
+        if status != Status.SUCCESS:
+            raise typer.Exit(1)
+
     except Exception as e:
         if isinstance(e, jinja2.exceptions.TemplateRuntimeError):
             raise e

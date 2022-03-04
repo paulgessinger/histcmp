@@ -10,10 +10,12 @@ from typing import Tuple, Optional
 
 import ROOT
 
+from histcmp import icons
 from histcmp.root_helpers import (
     integralAndError,
     get_bin_content,
     get_bin_content_error,
+    push_root_level,
 )
 
 
@@ -21,6 +23,15 @@ class Status(Enum):
     SUCCESS = 1
     FAILURE = 2
     INCONCLUSIVE = 3
+
+    @property
+    def icon(self):
+        if self == Status.SUCCESS:
+            return icons.success
+        elif self == Status.INCONCLUSIVE:
+            return icons.inconclusive
+        else:
+            return icons.failure
 
 
 ROOT.gInterpreter.Declare(
@@ -48,7 +59,6 @@ chi2result = collections.namedtuple(
 
 class CompatCheck(ABC):
     def __init__(self):
-        print("COMPAT CHECK INIT")
         self._plot = None
 
     @abstractmethod
@@ -72,15 +82,22 @@ class CompatCheck(ABC):
         else:
             return Status.FAILURE
 
-    def make_plot(self, output: Path) -> Optional[Path]:
-        return None
+    def make_plot(self, output: Path) -> bool:
+        return False
 
-    def ensure_plot(self, key: str, output_dir: Path) -> None:
+    def ensure_plot(self, key: str, report_dir: Path, plot_dir: Path) -> Optional[Path]:
         if self._plot is not None:
-            return
-        self._plot = self.make_plot(output_dir / f"{key}_{self}.png")
+            return self._plot
+        rel_path = plot_dir / f"{key}_{self}.png"
+        if (report_dir / rel_path).exists():
+            self._plot = rel_path
+            return self._plot
+        if self.make_plot(report_dir / rel_path):
+            self._plot = rel_path
+        return self._plot
 
-    def get_plot(self) -> Optional[Path]:
+    @property
+    def plot(self) -> Optional[Path]:
         return self._plot
 
 
@@ -152,9 +169,7 @@ class Chi2Test(ScoreThresholdCheck):
     @functools.cached_property
     def _result_v(self):
         opt = "P"
-        error_ignore = ROOT.gErrorIgnoreLevel
-        try:
-            ROOT.gErrorIgnoreLevel = ROOT.kWarning
+        with push_root_level(ROOT.kWarning):
 
             self._result_v = chi2result(*ROOT.MyChi2Test(self.item_a, self.item_b, opt))
             #  print(self._result_v)
@@ -170,8 +185,6 @@ class Chi2Test(ScoreThresholdCheck):
             #  )
 
             #  return self.item_a.Chi2Test(self.item_b, opt)
-        finally:
-            ROOT.gErrorIgnoreLevel = error_ignore
 
         return self._result_v
 
@@ -246,8 +259,11 @@ class RatioCheck(CompatCheck):
         super().__init__()
 
         if isinstance(item_a, ROOT.TEfficiency):
-            self.applicable = False
-            return
+            item_a = item_a.CreateGraph().GetHistogram()
+            item_b = item_b.CreateGraph().GetHistogram()
+        if isinstance(item_a, ROOT.TProfile):
+            item_a = item_a.ProjectionX()
+            item_b = item_b.ProjectionX()
 
         try:
             ratio = item_a.Clone()
@@ -258,13 +274,18 @@ class RatioCheck(CompatCheck):
         except Exception:
             self.applicable = False
 
-    def make_plot(self, output: Path) -> Optional[Path]:
+    def make_plot(self, output: Path) -> bool:
         if not self.applicable:
-            return None
-        print("MAKE PLOT", output)
+            return False
         c = ROOT.TCanvas("c1", "c1")
-        self.ratio.Draw()
+
+        opt = ""
+        if isinstance(self.ratio, ROOT.TH2):
+            opt = "colz"
+        self.ratio.Draw(opt)
+        self.ratio.GetYaxis().SetTitle("reference / current")
         c.SaveAs(str(output))
+        return True
 
     def is_applicable(self) -> bool:
         return self.applicable and self.ratio is not None
@@ -301,11 +322,18 @@ class ResidualCheck(CompatCheck):
         if isinstance(self.item_a, ROOT.TEfficiency):
             self.item_a = self.item_a.CreateGraph().GetHistogram()
             self.item_b = self.item_b.CreateGraph().GetHistogram()
+        if isinstance(self.item_a, ROOT.TProfile):
+            self.item_a = self.item_a.ProjectionX()
+            self.item_b = self.item_b.ProjectionX()
 
         try:
             self.residual = self.item_a.Clone()
             self.residual.SetDirectory(0)
+            #  print(*get_bin_content_error(self.residual))
+            #  print(*get_bin_content_error(self.item_b))
             self.residual.Add(self.item_b, -1)
+            #  print(*get_bin_content_error(self.residual))
+
             self.applicable = True
         except Exception:
             self.applicable = False
@@ -327,9 +355,22 @@ class ResidualCheck(CompatCheck):
 
     def label(self) -> str:
         if self.is_valid():
-            return f"residuals < {self.threshold}"
+            return f"pull < {self.threshold}"
         else:
-            return f"residuals > {self.threshold}"
+            return f"pull > {self.threshold}"
+
+    def make_plot(self, output: Path) -> bool:
+        if not self.applicable:
+            return False
+        c = ROOT.TCanvas("c1", "c1")
+
+        opt = ""
+        if isinstance(self.residual, ROOT.TH2):
+            opt = "colz"
+        self.residual.Draw(opt)
+        self.residual.GetYaxis().SetTitle("reference / current")
+        c.SaveAs(str(output))
+        return True
 
     def __str__(self) -> str:
         return "ResidualCheck"

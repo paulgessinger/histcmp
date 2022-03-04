@@ -1,8 +1,21 @@
 from typing import Tuple
 import ctypes
+import contextlib
 
 import numpy
 import ROOT
+
+ROOT.gStyle.SetOptStat(0)
+
+
+@contextlib.contextmanager
+def push_root_level(value):
+    prev = ROOT.gErrorIgnoreLevel
+    ROOT.gErrorIgnoreLevel = value
+    try:
+        yield
+    finally:
+        ROOT.gErrorIgnoreLevel = prev
 
 
 def integralAndError(item) -> Tuple[float, float]:

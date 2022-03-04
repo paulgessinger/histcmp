@@ -3,11 +3,12 @@ from typing import Tuple, List, Any
 import functools
 
 from rich.progress import track
-from pydantic import BaseModel
+from dataclasses import dataclass, field
 
 
 from histcmp.console import console, fail, info, good, warn
 from histcmp.root_helpers import integralAndError, get_bin_content
+from histcmp import icons
 from histcmp.checks import (
     CompatCheck,
     Chi2Test,
@@ -21,15 +22,18 @@ from histcmp.checks import (
 import ROOT
 
 
-class ComparisonItem(BaseModel):
-    class Config:
-        arbitrary_types_allowed = True
-        keep_untouched = (functools.cached_property,)
-
+class ComparisonItem:
     key: str
     item_a: Any
     item_b: Any
-    checks: List[CompatCheck] = []
+    checks: List[CompatCheck]
+
+    def __init__(self, key: str, item_a, item_b):
+        self.key = key
+        self.item_a = item_a
+        self.item_b = item_b
+        self._generic_plots = []
+        self.checks = []
 
     @functools.cached_property
     def status(self) -> Status:
@@ -44,15 +48,85 @@ class ComparisonItem(BaseModel):
         return Status.INCONCLUSIVE
         #  raise RuntimeError("Shouldn't happen")
 
-    def ensure_plots(self, output: Path):
+    def ensure_plots(self, report_dir: Path, plot_dir: Path):
         for check in self.checks:
-            check.ensure_plot(self.key, output)
+            check.ensure_plot(self.key, report_dir, plot_dir)
+
+        #  print("MAKE PLOT")
+        #  print(type(self.item_a))
+        #  print(isinstance(self.item_a, ROOT.TH1), isinstance(self.item_a, ROOT.TH2))
+
+        def do_plot(item_a, item_b, out):
+            c = ROOT.TCanvas("c1")
+            item_a.SetLineColor(ROOT.kBlue)
+            item_a.Draw()
+            item_b.SetLineColor(ROOT.kRed)
+            item_b.Draw("same")
+
+            if isinstance(item_a, ROOT.TEfficiency):
+                ha = item_a.CreateGraph().GetHistogram()
+                hb = item_b.CreateGraph().GetHistogram()
+                maximum = max(ha.GetMaximum(), hb.GetMaximum())
+                minimum = max(ha.GetMinimum(), hb.GetMinimum())
+                ROOT.gPad.Update()
+                graph = item_a.GetPaintedGraph()
+                graph.SetMinimum(minimum)
+                graph.SetMaximum(maximum)
+            else:
+                maximum = max(item_a.GetMaximum(), item_b.GetMaximum())
+                minimum = max(item_a.GetMinimum(), item_b.GetMinimum())
+                item_a.GetYaxis().SetRangeUser(
+                    minimum, minimum + (maximum - minimum) * 1.2
+                )
+
+            legend = ROOT.TLegend(0.1, 0.8, 0.9, 0.9)
+            legend.SetNColumns(2)
+            #  legend.SetHeader("The Legend Title","C"
+            legend.AddEntry(item_a, "reference")
+            legend.AddEntry(item_b, "current")
+            legend.Draw()
+            c.SaveAs(out)
+
+        if isinstance(self.item_a, ROOT.TH2):
+            for proj in "ProjectionX", "ProjectionY":
+                p = plot_dir / f"{self.key}_overlay_{proj}.png"
+                if p.exists():
+                    continue
+                item_a = getattr(self.item_a, proj)().Clone()
+                item_b = getattr(self.item_b, proj)().Clone()
+                item_a.SetDirectory(0)
+                item_b.SetDirectory(0)
+                do_plot(
+                    item_a,
+                    item_b,
+                    str(report_dir / p),
+                )
+                self._generic_plots.append(p)
+        elif isinstance(self.item_a, ROOT.TH1) or isinstance(
+            self.item_a, ROOT.TEfficiency
+        ):
+            p = plot_dir / f"{self.key}_overlay.png"
+            if not (report_dir / p).exists():
+                do_plot(self.item_a, self.item_b, str(report_dir / p))
+
+            self._generic_plots.append(p)
+
+    @property
+    def first_plot_index(self):
+        for i, v in enumerate(self.checks):
+            if v.plot is not None:
+                return i
+
+    @property
+    def generic_plots(self) -> List[Path]:
+        return self._generic_plots
 
 
-class Comparison(BaseModel):
+@dataclass
+class Comparison:
     file_a: str
     file_b: str
-    common: List[ComparisonItem] = []
+    common: list = field(default_factory=list)
 
 
 def can_handle_item(item) -> bool:
@@ -84,6 +158,9 @@ def compare(a: Path, b: Path) -> Comparison:
         item_a = rf_a.Get(key)
         item_b = rf_b.Get(key)
 
+        item_a.SetDirectory(0)
+        item_b.SetDirectory(0)
+
         if type(item_a) != type(item_b):
             console.rule(f"{key}")
             fail(
@@ -111,13 +188,11 @@ def compare(a: Path, b: Path) -> Comparison:
             item.checks.append(inst)
             if inst.is_applicable():
                 if inst.is_valid():
-                    console.print(
-                        ":white_check_mark:", inst, inst.label(), style="bold green"
-                    )
+                    console.print(icons.success, inst, inst.label(), style="bold green")
                 else:
-                    console.print(":red_circle:", inst, inst.label(), style="bold red")
+                    console.print(icons.failure, inst, inst.label(), style="bold red")
             else:
-                console.print(":yellow_circle:", inst, style="yellow")
+                console.print(icons.inconclusive, inst, style="yellow")
         result.common.append(item)
 
     info(f"{len(removed)} elements are missing in new file")
