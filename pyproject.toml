@@ -19,10 +19,16 @@ rich = "^11.0.0"
 numpy = "^1.22.1"
 Jinja2 = "^3.0.3"
 requests = "^2.27.1"
+matplotlib = "^3.5.1"
+hist = {extras = ["plot"], version = "^2.6.0"}
 
 [tool.poetry.dev-dependencies]
 black = "^20.8b1"
+isort = "^5.10.1"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.isort]
+profile = "black"
