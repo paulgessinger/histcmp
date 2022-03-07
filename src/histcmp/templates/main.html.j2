@@ -18,7 +18,7 @@
         {%- elif item.status == Status.INCONCLUSIVE -%}
         has-text-warning
         {%- endif -%}" id="{{ item.key }}">
-            <a href="{{item.key}}">{{ item.key }}</a>
+            <a href="#{{item.key}}">{{ item.key }}</a>
         </h2>
         </div>
 
@@ -30,29 +30,37 @@
 
         <hr>
         
-        <div class="block">
+        <div class="block" x-data="{open: 0}">
+            <div class="tags">
             {% for check in item.checks %}
-            <div x-data="{open: false}">
-            <a @click="open = !open"
+            <a @click="open = open == {{loop.index}} ? 0 : {{loop.index}}" :class="open == {{loop.index}} ? 'active' : ''"
             {% if check.status == Status.SUCCESS %}
-                class="has-text-success"
+            class="check tag is-success"
             {% elif check.status == Status.FAILURE %}
-            class="has-text-danger"
+            class="check tag is-danger"
+            {% elif check.status == Status.DISABLED %}
+            class="check tag is-light"
             {% elif check.status == Status.INCONCLUSIVE %}
-            class="has-text-warning"
+            class="check tag is-warning"
             {% endif %}
             >
-                {{ check.status.icon | emojize }}
+                {#{{ check.status.icon | emojize }}#}
                 {{ check }}
             </a>
 
-                <div x-show="open">
-                    {% if check.is_applicable %}
-                    {{ check.label }}
-                    {% else %}
+            {% endfor %}
+            </div>
+            {% for check in item.checks %}
+            <div class="container">
+            <div x-show="open == {{loop.index}}" class="notification">
+                {% if not check.is_applicable %}
                     {{check}} is not applicable
-                    {% endif %}
-                </div>
+                {% elif check.is_disabled %}
+                    {{check}} is disabled
+                {% else %}
+                    {{ check.label }}
+                {% endif %}
+            </div>
             </div>
             {% endfor %}
         </div>

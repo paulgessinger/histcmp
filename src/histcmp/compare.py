@@ -2,8 +2,10 @@ from pathlib import Path
 from typing import Tuple, List, Any
 import functools
 from dataclasses import dataclass, field
+import fnmatch
 
 from rich.progress import track
+from rich.text import Text
 from matplotlib import pyplot
 import numpy
 
@@ -11,15 +13,13 @@ from histcmp.console import console, fail, info, good, warn
 from histcmp.root_helpers import integralAndError, get_bin_content, convert_hist
 from histcmp.plot import plot_ratio, plot_to_uri
 from histcmp import icons
+import histcmp.checks
+
 from histcmp.checks import (
     CompatCheck,
-    Chi2Test,
-    KolmogorovTest,
-    IntegralCheck,
-    RatioCheck,
-    ResidualCheck,
     Status,
 )
+from histcmp.config import Config
 
 import ROOT
 
@@ -173,7 +173,7 @@ def can_handle_item(item) -> bool:
     )  # and not isinstance(item, ROOT.TH2)
 
 
-def compare(a: Path, b: Path) -> Comparison:
+def compare(config: Config, a: Path, b: Path) -> Comparison:
     rf_a = ROOT.TFile.Open(str(a))
     rf_b = ROOT.TFile.Open(str(b))
 
@@ -215,22 +215,37 @@ def compare(a: Path, b: Path) -> Comparison:
 
         item = ComparisonItem(key=key, item_a=item_a, item_b=item_b)
 
-        for test in (
-            KolmogorovTest,
-            RatioCheck,
-            Chi2Test,
-            ResidualCheck,
-            IntegralCheck,
-        ):
-            inst = test(item_a, item_b)
-            item.checks.append(inst)
-            if inst.is_applicable:
-                if inst.is_valid:
-                    console.print(icons.success, inst, inst.label, style="bold green")
+        configured_checks = {}
+        for pattern, checks in config.checks.items():
+            if not fnmatch.fnmatch(key, pattern):
+                continue
+
+            for cname, check_kw in checks.items():
+                ctype = getattr(histcmp.checks, cname)
+                if ctype not in configured_checks:
+                    configured_checks[ctype] = check_kw or {}
                 else:
-                    console.print(icons.failure, inst, inst.label, style="bold red")
+                    if check_kw is None:
+                        configured_checks[ctype].update({"disabled": True})
+                    else:
+                        configured_checks[ctype].update(check_kw)
+
+        for ctype, check_kw in configured_checks.items():
+            #  print(ctype, check_kw)
+            inst = ctype(item_a, item_b, **check_kw)
+            item.checks.append(inst)
+            if inst.is_disabled:
+                console.print(icons.disabled, Text(str(inst), style="strike"))
             else:
-                console.print(icons.inconclusive, inst, style="yellow")
+                if inst.is_applicable:
+                    if inst.is_valid:
+                        console.print(
+                            icons.success, inst, inst.label, style="bold green"
+                        )
+                    else:
+                        console.print(icons.failure, inst, inst.label, style="bold red")
+                else:
+                    console.print(icons.inconclusive, inst, style="yellow")
         result.common.append(item)
 
     info(f"{len(removed)} elements are missing in new file")

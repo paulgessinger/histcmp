@@ -11,3 +11,11 @@
     flex-basis:auto;
   }
 }
+
+h2 a {
+  color:inherit;
+}
+
+.check.active {
+  font-weight:bold;
+}

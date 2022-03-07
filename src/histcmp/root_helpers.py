@@ -33,7 +33,7 @@ def integralAndError(item) -> Tuple[float, float]:
         i = item.IntegralAndError(0, item.GetXaxis().GetNbins(), e)
         return i, e.value
     else:
-        raise TypeError("Invalid type")
+        raise TypeError(f"Invalid type {type(item)}")
 
 
 def get_bin_content(item) -> numpy.array:

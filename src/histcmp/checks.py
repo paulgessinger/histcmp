@@ -24,6 +24,7 @@ class Status(Enum):
     SUCCESS = 1
     FAILURE = 2
     INCONCLUSIVE = 3
+    DISABLED = 4
 
     @property
     def icon(self):
@@ -31,6 +32,8 @@ class Status(Enum):
             return icons.success
         elif self == Status.INCONCLUSIVE:
             return icons.inconclusive
+        elif self == Status.DISABLED:
+            return icons.disabled
         else:
             return icons.failure
 
@@ -59,8 +62,13 @@ chi2result = collections.namedtuple(
 
 
 class CompatCheck(ABC):
-    def __init__(self):
+    def __init__(self, disabled: bool = False):
+        self.disabled = disabled
         self._plot = None
+
+    @property
+    def is_disabled(self) -> bool: 
+        return self.disabled
 
     @abstractproperty
     def is_valid(self) -> bool:
@@ -78,6 +86,8 @@ class CompatCheck(ABC):
     def status(self) -> Status:
         if not self.is_applicable:
             return Status.INCONCLUSIVE
+        if self.is_disabled:
+            return Status.DISABLED
         if self.is_valid:
             return Status.SUCCESS
         else:
@@ -103,10 +113,10 @@ class CompatCheck(ABC):
 
 
 class ScoreThresholdCheck(CompatCheck):
-    def __init__(self, threshold: float, op):
+    def __init__(self, threshold: float, op, **kwargs):
         self.threshold = threshold
         self.op = op
-        super().__init__()
+        super().__init__(**kwargs)
 
     @abstractproperty
     def score(self) -> float:
@@ -137,12 +147,12 @@ class ScoreThresholdCheck(CompatCheck):
 
 
 class KolmogorovTest(ScoreThresholdCheck):
-    def __init__(self, item_a, item_b, threshold: float = 0.68):
+    def __init__(self, item_a, item_b, threshold: float = 0.68, **kwargs):
         self.item_a = item_a
         self.item_b = item_b
         self.threshold = threshold
 
-        super().__init__(threshold=threshold, op=operator.gt)
+        super().__init__(threshold=threshold, op=operator.gt, **kwargs)
 
     @functools.cached_property
     def score(self) -> float:
@@ -154,6 +164,7 @@ class KolmogorovTest(ScoreThresholdCheck):
             passed = self.item_a.GetPassedHistogram()
             total = self.item_a.GetTotalHistogram()
             self.item_a = passed.Clone()
+            self.item_a.SetDirectory(0)
             self.item_a.Divide(total)
 
             passed = self.item_b.GetPassedHistogram()
@@ -170,7 +181,7 @@ class KolmogorovTest(ScoreThresholdCheck):
 
 
 class Chi2Test(ScoreThresholdCheck):
-    def __init__(self, item_a, item_b, threshold: float = 0.01):
+    def __init__(self, item_a, item_b, threshold: float = 0.01, **kwargs):
         self.item_a = item_a
         self.item_b = item_b
         self.threshold = threshold
@@ -179,6 +190,7 @@ class Chi2Test(ScoreThresholdCheck):
             passed = self.item_a.GetPassedHistogram()
             total = self.item_a.GetTotalHistogram()
             self.item_a = passed.Clone()
+            self.item_a.SetDirectory(0)
             self.item_a.Divide(total)
 
             passed = self.item_b.GetPassedHistogram()
@@ -187,7 +199,7 @@ class Chi2Test(ScoreThresholdCheck):
             self.item_b.SetDirectory(0)
             self.item_b.Divide(total)
 
-        super().__init__(threshold=threshold, op=operator.gt)
+        super().__init__(threshold=threshold, op=operator.gt, **kwargs)
 
     @functools.cached_property
     def _result_v(self):
@@ -253,8 +265,8 @@ class Chi2Test(ScoreThresholdCheck):
 
 
 class IntegralCheck(ScoreThresholdCheck):
-    def __init__(self, item_a, item_b, threshold: float = 3.0):
-        super().__init__(threshold=threshold, op=operator.lt)
+    def __init__(self, item_a, item_b, threshold: float = 3.0, **kwargs):
+        super().__init__(threshold=threshold, op=operator.lt, **kwargs)
         self.sigma = float("inf")
         if not isinstance(item_a, ROOT.TH1) and not isinstance(
             item_a, ROOT.TEfficiency
@@ -268,6 +280,7 @@ class IntegralCheck(ScoreThresholdCheck):
             passed = item_a.GetPassedHistogram()
             total = item_a.GetTotalHistogram()
             item_a = passed.Clone()
+            item_a.SetDirectory(0)
             item_a.Divide(total)
 
             passed = item_b.GetPassedHistogram()
@@ -299,19 +312,20 @@ class IntegralCheck(ScoreThresholdCheck):
 
 
 class RatioCheck(CompatCheck):
-    def __init__(self, item_a, item_b, threshold: float = 3):
+    def __init__(self, item_a, item_b, threshold: float = 3, **kwargs):
         #  self.val_a, self.err_a = get_bin_content_error(item_a)
         #  self.val_b, self.err_b = get_bin_content_error(item_b)
         #  self.ratio = self.val_a / self.val_b
         self.ratio = None
         self.threshold = threshold
 
-        super().__init__()
+        super().__init__(**kwargs)
 
         if isinstance(item_a, ROOT.TEfficiency):
             passed = item_a.GetPassedHistogram()
             total = item_a.GetTotalHistogram()
             item_a = passed.Clone()
+            item_a.SetDirectory(0)
             item_a.Divide(total)
 
             passed = item_b.GetPassedHistogram()
@@ -385,12 +399,12 @@ class RatioCheck(CompatCheck):
 
 
 class ResidualCheck(CompatCheck):
-    def __init__(self, item_a, item_b, threshold=3):
+    def __init__(self, item_a, item_b, threshold=3, **kwargs):
         self.threshold = threshold
         self.item_a = item_a
         self.item_b = item_b
 
-        super().__init__()
+        super().__init__(**kwargs)
 
         if isinstance(self.item_a, ROOT.TEfficiency):
             self.item_a = self.item_a.CreateGraph().GetHistogram()
