@@ -4,6 +4,7 @@ import urllib.parse
 
 #  from abc import ABC, abstractmethod, abstractproperty
 #  from pathlib import Path
+import numpy
 
 import hist
 from matplotlib import pyplot
@@ -41,6 +42,21 @@ def plot_ratio(a: hist.Hist, b: hist.Hist):
         )
 
         try:
+            ratio = a.values() / b.values()
+            ratio = ratio[~numpy.isnan(ratio) & numpy.isfinite(ratio)]
+            #  print(a.values())
+            #  print(b.values())
+            #  print(ratio)
+            if len(ratio) > 0:
+                ymin, ymax = numpy.min(ratio), numpy.max(ratio)
+            else:
+                ymin, ymax = 0.5, 2
+
+            yrange = ymax - ymin
+            ymin -= yrange * 0.2
+            ymax += yrange * 0.2
+
+            #  print(ymin, ymax)
             main_ax_artists, subplot_ax_artists = a.plot_ratio(
                 b,
                 ax_dict=dict(main_ax=ax, ratio_ax=rax),
@@ -48,14 +64,16 @@ def plot_ratio(a: hist.Hist, b: hist.Hist):
                 rp_num_label="monitored",
                 rp_denom_label="reference",
                 rp_uncert_draw_type="line",  # line or bar
+                rp_ylim=(ymin, ymax),
             )
             markers, _, _ = subplot_ax_artists.errorbar.lines
             markers.set_markersize(2)
         except ValueError:
-            ax.clear()
-            rax.clear()
-            a.plot(ax=ax)
-            b.plot(ax=ax)
+            raise
+            #  ax.clear()
+            #  rax.clear()
+            #  a.plot(ax=ax)
+            #  b.plot(ax=ax)
 
     ax.set_ylabel(a.label)
 

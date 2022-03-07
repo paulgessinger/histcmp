@@ -18,7 +18,7 @@
         {%- elif item.status == Status.INCONCLUSIVE -%}
         has-text-warning
         {%- endif -%}" id="{{ item.key }}">
-            {{ item.key }}
+            <a href="{{item.key}}">{{ item.key }}</a>
         </h2>
         </div>
 
@@ -32,7 +32,8 @@
         
         <div class="block">
             {% for check in item.checks %}
-            <div
+            <div x-data="{open: false}">
+            <a @click="open = !open"
             {% if check.status == Status.SUCCESS %}
                 class="has-text-success"
             {% elif check.status == Status.FAILURE %}
@@ -42,14 +43,16 @@
             {% endif %}
             >
                 {{ check.status.icon | emojize }}
-                {{ check }} <br/>
-            </div>
-            <div>
-                {% if check.is_applicable %}
-                {{ check.label }}
-                {% else %}
-                {{check}} is not applicable
-                {% endif %}
+                {{ check }}
+            </a>
+
+                <div x-show="open">
+                    {% if check.is_applicable %}
+                    {{ check.label }}
+                    {% else %}
+                    {{check}} is not applicable
+                    {% endif %}
+                </div>
             </div>
             {% endfor %}
         </div>

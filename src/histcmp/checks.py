@@ -121,7 +121,7 @@ class ScoreThresholdCheck(CompatCheck):
     @property
     def label(self) -> str:
         v = "" if self.is_valid else "! "
-        return f"{v}{self.score:.2f} {self._op_label()} {self.threshold:.2f}"
+        return f"{v}{self.score} {self._op_label()} {self.threshold}"
 
     def _op_label(self) -> str:
         if self.op is operator.lt:
@@ -137,7 +137,7 @@ class ScoreThresholdCheck(CompatCheck):
 
 
 class KolmogorovTest(ScoreThresholdCheck):
-    def __init__(self, item_a, item_b, threshold: float = 0.95):
+    def __init__(self, item_a, item_b, threshold: float = 0.68):
         self.item_a = item_a
         self.item_b = item_b
         self.threshold = threshold
@@ -174,6 +174,18 @@ class Chi2Test(ScoreThresholdCheck):
         self.item_a = item_a
         self.item_b = item_b
         self.threshold = threshold
+
+        if isinstance(self.item_a, ROOT.TEfficiency):
+            passed = self.item_a.GetPassedHistogram()
+            total = self.item_a.GetTotalHistogram()
+            self.item_a = passed.Clone()
+            self.item_a.Divide(total)
+
+            passed = self.item_b.GetPassedHistogram()
+            total = self.item_b.GetTotalHistogram()
+            self.item_b = passed.Clone()
+            self.item_b.SetDirectory(0)
+            self.item_b.Divide(total)
 
         super().__init__(threshold=threshold, op=operator.gt)
 
@@ -217,6 +229,9 @@ class Chi2Test(ScoreThresholdCheck):
         if res.ndf == -1:
             return False
 
+        #  if res.igood != 0 and res.prob == 0.0: return False
+        if res.prob == 0.0: return False
+
         #  sumw2 = numpy.array(
         #  [
         #  self.item_a.GetSumw2().At(b)
@@ -238,7 +253,7 @@ class Chi2Test(ScoreThresholdCheck):
 
 
 class IntegralCheck(ScoreThresholdCheck):
-    def __init__(self, item_a, item_b, threshold: float = 1.0):
+    def __init__(self, item_a, item_b, threshold: float = 3.0):
         super().__init__(threshold=threshold, op=operator.lt)
         self.sigma = float("inf")
         if not isinstance(item_a, ROOT.TH1) and not isinstance(
@@ -260,15 +275,20 @@ class IntegralCheck(ScoreThresholdCheck):
             item_b = passed.Clone()
             item_b.SetDirectory(0)
             item_b.Divide(total)
-        int_a, err_a = integralAndError(item_a)
-        int_b, err_b = integralAndError(item_b)
+        self.int_a, self.err_a = integralAndError(item_a)
+        self.int_b, self.err_b = integralAndError(item_b)
 
-        if err_a > 0.0:
-            self.sigma = numpy.abs(int_a - int_b) / err_a
+        if self.err_a > 0.0:
+            self.sigma = numpy.abs(self.int_a - self.int_b) / self.err_a
 
     @property
     def score(self) -> float:
         return self.sigma
+
+    @property
+    def label(self) -> str:
+        cmp = "<" if self.is_valid else ">="
+        return f"Intregal: {self.int_a}+-{self.err_a:} vs. {self.int_b}+-{self.err_b}: (int_a - int_b) / sigma(int_a) = {self.sigma:.2f} {cmp} {self.threshold}"
 
     @functools.cached_property
     def is_applicable(self) -> bool:
@@ -279,7 +299,7 @@ class IntegralCheck(ScoreThresholdCheck):
 
 
 class RatioCheck(CompatCheck):
-    def __init__(self, item_a, item_b, threshold: float = 1):
+    def __init__(self, item_a, item_b, threshold: float = 3):
         #  self.val_a, self.err_a = get_bin_content_error(item_a)
         #  self.val_b, self.err_b = get_bin_content_error(item_b)
         #  self.ratio = self.val_a / self.val_b
@@ -331,6 +351,8 @@ class RatioCheck(CompatCheck):
 
     @functools.cached_property
     def is_applicable(self) -> bool:
+        nbins = len(self._ratio())
+        if nbins == 0: return False
         return self.applicable and self.ratio is not None
 
     @functools.lru_cache(1)
@@ -347,19 +369,23 @@ class RatioCheck(CompatCheck):
     @property
     def is_valid(self) -> bool:
         #  print("ratio:", self._ratio())
-        return numpy.all(numpy.abs(self._ratio()) < self.threshold)
+        nabove = numpy.sum(numpy.abs(self._ratio()) < self.threshold)
+        nbins = len(self._ratio())
+        
+        return nabove > numpy.sqrt(nbins)
 
     @property
     def label(self) -> str:
         n = numpy.sum(numpy.abs(self._ratio()) >= self.threshold)
-        return f"(a/b - 1) / sigma(a/b) > {self.threshold} for {n} bins"
+        nbins = len(self._ratio())
+        return f"(a/b - 1) / sigma(a/b) > {self.threshold} for {n}/{nbins} bins, cf. {numpy.sqrt(nbins)}"
 
     def __str__(self) -> str:
         return "RatioCheck"
 
 
 class ResidualCheck(CompatCheck):
-    def __init__(self, item_a, item_b, threshold=1):
+    def __init__(self, item_a, item_b, threshold=3):
         self.threshold = threshold
         self.item_a = item_a
         self.item_b = item_b
@@ -386,6 +412,8 @@ class ResidualCheck(CompatCheck):
             self.applicable = False
 
     def is_applicable(self) -> bool:
+        val, err, pull = self._pulls
+        if numpy.sum(~numpy.isnan(pull)) == 0: return False
         return self.applicable
 
     @functools.cached_property
@@ -399,14 +427,18 @@ class ResidualCheck(CompatCheck):
     @functools.cached_property
     def is_valid(self) -> bool:
         val, err, pull = self._pulls
-        return numpy.all(pull[~numpy.isnan(pull)] < self.threshold)
+        nabove= numpy.sum(pull[~numpy.isnan(pull)] < self.threshold)
+        return nabove > numpy.sqrt(len(val))
 
     @functools.cached_property
     def label(self) -> str:
+        val, err, pull = self._pulls
+        count = numpy.sum(pull[~numpy.isnan(pull)] >= self.threshold)
+        pe = numpy.sqrt(len(val))
         if self.is_valid:
-            return f"pull < {self.threshold}"
+            return f"pull < {self.threshold} in {len(val)-count} bins, cf. {pe}"
         else:
-            return f"pull > {self.threshold}"
+            return f"pull > {self.threshold} in {count} bins, cf. {pe}"
 
     def make_plot(self, output: Path) -> bool:
         if not self.applicable:

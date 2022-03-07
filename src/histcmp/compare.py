@@ -218,7 +218,7 @@ def compare(a: Path, b: Path) -> Comparison:
         for test in (
             KolmogorovTest,
             RatioCheck,
-            #  Chi2Test,
+            Chi2Test,
             ResidualCheck,
             IntegralCheck,
         ):
