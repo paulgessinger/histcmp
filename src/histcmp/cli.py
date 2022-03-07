@@ -20,7 +20,7 @@ app = typer.Typer()
 def main(
     monitored: Path = typer.Argument(..., exists=True, dir_okay=False),
     reference: Path = typer.Argument(..., exists=True, dir_okay=False),
-    output: Optional[Path] = typer.Option(None, "-o", "--output", file_okay=False),
+    output: Optional[Path] = typer.Option(None, "-o", "--output", dir_okay=False),
 ):
     try:
         import ROOT
@@ -39,8 +39,6 @@ def main(
         comparison = compare(monitored, reference)
 
         if output is not None:
-            if not output.exists():
-                output.mkdir()
             make_report(comparison, output)
 
         status = Status.SUCCESS

@@ -4,9 +4,14 @@
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta http-equiv="Cache-control" content="max-age=0">
-        <link href="{{ static_url("css/bulma/bulma.min.css") }}" rel="stylesheet">
-        <link href="{{ static_url("css/main.css") }}" rel="stylesheet">
-        <script src="{{ static_url("alpinejs.min.js") }}"></script>
+        {#<link href="{{ static_url("css/bulma/bulma.min.css") }}" rel="stylesheet">#}
+        {#<link href="{{ static_url("css/main.css") }}" rel="stylesheet">#}
+        {#<script src="{{ static_url("alpinejs.min.js") }}"></script>#}
+        <style>
+        {{ static_content("css/bulma/bulma.min.css") }}
+
+        {{ static_content("css/main.css") }}
+        </style>
         {% block head %}
         {% endblock %}
     </head>

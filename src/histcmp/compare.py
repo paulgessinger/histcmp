@@ -51,8 +51,8 @@ class ComparisonItem:
         #  raise RuntimeError("Shouldn't happen")
 
     def ensure_plots(self, report_dir: Path, plot_dir: Path):
-        for check in self.checks:
-            check.ensure_plot(self.key, report_dir, plot_dir)
+        #  for check in self.checks:
+        #  check.ensure_plot(self.key, report_dir, plot_dir)
 
         #  print("MAKE PLOT")
         #  print(type(self.item_a))

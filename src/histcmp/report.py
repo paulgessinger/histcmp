@@ -82,6 +82,16 @@ def static_url(url: Union[str, Path]) -> Path:
     return url_for("static" / url)
 
 
+def static_content(url: str) -> str:
+    static = Path(__file__).parent / "static"
+    candidate = static / url
+
+    if not candidate.exists():
+        raise ValueError(f"File at {candidate} not found")
+
+    return candidate.read_text()
+
+
 def get_current_url():
     global current_url
     return current_url
@@ -103,6 +113,7 @@ def make_environment() -> jinja2.Environment:
     )
 
     env.globals["static_url"] = static_url
+    env.globals["static_content"] = static_content
 
     env.globals["url_for"] = url_for
     env.globals["current_url"] = get_current_url
@@ -125,12 +136,12 @@ def copy_static(output: Path) -> None:
 
 def make_report(comparison: Comparison, output: Path):
 
-    copy_static(output)
+    #  copy_static(output)
 
     env = make_environment()
 
     plot_dir = Path("plots")
-    (output / plot_dir).mkdir(exist_ok=True)
+    #  (output / plot_dir).mkdir(exist_ok=True)
 
     import ROOT
 
@@ -142,5 +153,5 @@ def make_report(comparison: Comparison, output: Path):
             if p is not None:
                 console.print(p)
 
-    with (output / "index.html").open("w") as fh:
+    with output.open("w") as fh:
         fh.write(env.get_template("main.html.j2").render(comparison=comparison))

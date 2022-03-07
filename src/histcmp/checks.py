@@ -241,9 +241,25 @@ class IntegralCheck(ScoreThresholdCheck):
     def __init__(self, item_a, item_b, threshold: float = 1.0):
         super().__init__(threshold=threshold, op=operator.lt)
         self.sigma = float("inf")
-        if not isinstance(item_a, ROOT.TH1):
+        if not isinstance(item_a, ROOT.TH1) and not isinstance(
+            item_a, ROOT.TEfficiency
+        ):
             return
 
+        #  int_a, err_a = integralAndError(item_a)
+        #  int_b, err_b = integralAndError(item_b)
+
+        if isinstance(item_a, ROOT.TEfficiency):
+            passed = item_a.GetPassedHistogram()
+            total = item_a.GetTotalHistogram()
+            item_a = passed.Clone()
+            item_a.Divide(total)
+
+            passed = item_b.GetPassedHistogram()
+            total = item_b.GetTotalHistogram()
+            item_b = passed.Clone()
+            item_b.SetDirectory(0)
+            item_b.Divide(total)
         int_a, err_a = integralAndError(item_a)
         int_b, err_b = integralAndError(item_b)
 
@@ -320,7 +336,6 @@ class RatioCheck(CompatCheck):
     @functools.lru_cache(1)
     def _ratio(self):
         ratio, err = get_bin_content_error(self.ratio)
-        #  print(self.ratio.GetBinContent(5))
         #  print(ratio, err)
         m = ratio != 0.0
         ratio[m] = ratio[m] - 1
@@ -329,12 +344,14 @@ class RatioCheck(CompatCheck):
 
         return ratio[m & me] / err[m & me]
 
+    @property
     def is_valid(self) -> bool:
-        return numpy.all(self._ratio() < self.threshold)
+        #  print("ratio:", self._ratio())
+        return numpy.all(numpy.abs(self._ratio()) < self.threshold)
 
     @property
     def label(self) -> str:
-        n = numpy.sum(self._ratio() >= self.threshold)
+        n = numpy.sum(numpy.abs(self._ratio()) >= self.threshold)
         return f"(a/b - 1) / sigma(a/b) > {self.threshold} for {n} bins"
 
     def __str__(self) -> str:
