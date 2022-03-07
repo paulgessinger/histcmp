@@ -72,6 +72,25 @@ def plot_ratio(a: hist.Hist, b: hist.Hist):
     return fig, (ax, rax)
 
 
+def svg_encode(svg):
+    # Stackoverflow: https://stackoverflow.com/a/66718254/1928287
+    # Ref: https://bl.ocks.org/jennyknuth/222825e315d45a738ed9d6e04c7a88d0
+    # Encode an SVG string so it can be embedded into a data URL.
+    enc_chars = '"%#{}<>'  # Encode these to %hex
+    enc_chars_maybe = "&|[]^`;?:@="  # Add to enc_chars on exception
+    svg_enc = ""
+    # Translate character by character
+    for c in str(svg):
+        if c in enc_chars:
+            if c == '"':
+                svg_enc += "'"
+            else:
+                svg_enc += "%" + format(ord(c), "x")
+        else:
+            svg_enc += c
+    return " ".join(svg_enc.split())  # Compact whitespace
+
+
 def plot_to_uri(figure):
     buf = io.BytesIO()
     figure.savefig(buf, format="svg")
@@ -79,6 +98,7 @@ def plot_to_uri(figure):
     #         datauri = f"data:image/svg+xml;base64,{base64.b64encode(buf.getvalue()).decode('utf8')}"
 
     data = buf.getvalue().decode("utf8")
-    data = urllib.parse.quote(data)
+    #  data = urllib.parse.quote(data)
+    data = svg_encode(data)
     datauri = f"data:image/svg+xml;utf8,{data}"
     return datauri
