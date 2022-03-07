@@ -18,8 +18,8 @@ app = typer.Typer()
 
 @app.command()
 def main(
-    previous: Path = typer.Argument(..., exists=True, dir_okay=False),
-    current: Path = typer.Argument(..., exists=True, dir_okay=False),
+    monitored: Path = typer.Argument(..., exists=True, dir_okay=False),
+    reference: Path = typer.Argument(..., exists=True, dir_okay=False),
     output: Optional[Path] = typer.Option(None, "-o", "--output", file_okay=False),
 ):
     try:
@@ -32,11 +32,11 @@ def main(
     from histcmp.compare import compare
 
     info(f"Comparing files:")
-    info(f"Previous: {previous}")
-    info(f"Current: {current}")
+    info(f"Monitored: {monitored}")
+    info(f"Reference: {reference}")
 
     try:
-        comparison = compare(previous, current)
+        comparison = compare(monitored, reference)
 
         if output is not None:
             if not output.exists():

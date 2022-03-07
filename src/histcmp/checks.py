@@ -16,6 +16,7 @@ from histcmp.root_helpers import (
     get_bin_content,
     get_bin_content_error,
     push_root_level,
+    convert_hist,
 )
 
 
@@ -46,7 +47,7 @@ auto MyChi2Test(const TH1* a, const TH1* b, Option_t* option){
 
    Double_t prob = a->Chi2TestX(b,chi2,ndf,igood,option,res);
 
-   return std::tuple{prob, chi2, ndf, igood, res};
+   return std::make_tuple(prob, chi2, ndf, igood, res);
 }
 """
 )
@@ -61,23 +62,23 @@ class CompatCheck(ABC):
     def __init__(self):
         self._plot = None
 
-    @abstractmethod
+    @abstractproperty
     def is_valid(self) -> bool:
         raise NotImplementedError()
 
-    @abstractmethod
+    @abstractproperty
     def is_applicable(self) -> bool:
         raise NotImplementedError()
 
-    @abstractmethod
+    @abstractproperty
     def label(self) -> str:
         raise NotImplementedError()
 
     @property
     def status(self) -> Status:
-        if not self.is_applicable():
+        if not self.is_applicable:
             return Status.INCONCLUSIVE
-        if self.is_valid():
+        if self.is_valid:
             return Status.SUCCESS
         else:
             return Status.FAILURE
@@ -107,18 +108,20 @@ class ScoreThresholdCheck(CompatCheck):
         self.op = op
         super().__init__()
 
-    @abstractmethod
-    def get_score() -> float:
+    @abstractproperty
+    def score(self) -> float:
         raise NotImplementedError()
 
+    @functools.cached_property
     def is_valid(self) -> bool:
-        if not self.is_applicable():
+        if not self.is_applicable:
             raise RuntimeError(f"{self} not applicable, cannot check if valid")
-        return self.op(self.get_score(), self.threshold)
+        return self.op(self.score, self.threshold)
 
+    @property
     def label(self) -> str:
-        v = "" if self.is_valid() else "! "
-        return f"{v}{self.get_score()} {self._op_label()} {self.threshold}"
+        v = "" if self.is_valid else "! "
+        return f"{v}{self.score:.2f} {self._op_label()} {self.threshold:.2f}"
 
     def _op_label(self) -> str:
         if self.op is operator.lt:
@@ -141,15 +144,23 @@ class KolmogorovTest(ScoreThresholdCheck):
 
         super().__init__(threshold=threshold, op=operator.gt)
 
-    @functools.cache
-    def get_score(self) -> float:
+    @functools.cached_property
+    def score(self) -> float:
         return self.item_a.KolmogorovTest(self.item_b)
 
-    @functools.cache
+    @functools.cached_property
     def is_applicable(self) -> bool:
         if isinstance(self.item_a, ROOT.TEfficiency):
-            self.item_a = self.item_a.CreateGraph().GetHistogram()
-            self.item_b = self.item_b.CreateGraph().GetHistogram()
+            passed = self.item_a.GetPassedHistogram()
+            total = self.item_a.GetTotalHistogram()
+            self.item_a = passed.Clone()
+            self.item_a.Divide(total)
+
+            passed = self.item_b.GetPassedHistogram()
+            total = self.item_b.GetTotalHistogram()
+            self.item_b = passed.Clone()
+            self.item_b.SetDirectory(0)
+            self.item_b.Divide(total)
         int_a, _ = integralAndError(self.item_a)
         int_b, _ = integralAndError(self.item_b)
         return int_a != 0 and int_b != 0
@@ -188,11 +199,12 @@ class Chi2Test(ScoreThresholdCheck):
 
         return self._result_v
 
-    def get_score(self) -> float:
+    @property
+    def score(self) -> float:
         res = self._result_v
         return res.prob
 
-    @functools.cache
+    @functools.cached_property
     def is_applicable(self) -> bool:
         int_a, _ = integralAndError(self.item_a)
         int_b, _ = integralAndError(self.item_b)
@@ -238,9 +250,11 @@ class IntegralCheck(ScoreThresholdCheck):
         if err_a > 0.0:
             self.sigma = numpy.abs(int_a - int_b) / err_a
 
-    def get_score(self) -> float:
+    @property
+    def score(self) -> float:
         return self.sigma
 
+    @functools.cached_property
     def is_applicable(self) -> bool:
         return self.sigma != float("inf")
 
@@ -259,9 +273,18 @@ class RatioCheck(CompatCheck):
         super().__init__()
 
         if isinstance(item_a, ROOT.TEfficiency):
-            item_a = item_a.CreateGraph().GetHistogram()
-            item_b = item_b.CreateGraph().GetHistogram()
-        if isinstance(item_a, ROOT.TProfile):
+            passed = item_a.GetPassedHistogram()
+            total = item_a.GetTotalHistogram()
+            item_a = passed.Clone()
+            item_a.Divide(total)
+
+            passed = item_b.GetPassedHistogram()
+            total = item_b.GetTotalHistogram()
+            item_b = passed.Clone()
+            item_b.SetDirectory(0)
+            item_b.Divide(total)
+
+        elif isinstance(item_a, ROOT.TProfile):
             item_a = item_a.ProjectionX()
             item_b = item_b.ProjectionX()
 
@@ -269,6 +292,8 @@ class RatioCheck(CompatCheck):
             ratio = item_a.Clone()
             ratio.SetDirectory(0)
             ratio.Divide(item_b)
+            #  print(get_bin_content(item_a))
+            #  print(get_bin_content(item_b))
             self.applicable = True
             self.ratio = ratio
         except Exception:
@@ -284,15 +309,19 @@ class RatioCheck(CompatCheck):
             opt = "colz"
         self.ratio.Draw(opt)
         self.ratio.GetYaxis().SetTitle("reference / current")
+        self.ratio.GetYaxis().SetRangeUser(0.5, 2)
         c.SaveAs(str(output))
         return True
 
+    @functools.cached_property
     def is_applicable(self) -> bool:
         return self.applicable and self.ratio is not None
 
-    @functools.cache
+    @functools.lru_cache(1)
     def _ratio(self):
         ratio, err = get_bin_content_error(self.ratio)
+        #  print(self.ratio.GetBinContent(5))
+        #  print(ratio, err)
         m = ratio != 0.0
         ratio[m] = ratio[m] - 1
 
@@ -303,6 +332,7 @@ class RatioCheck(CompatCheck):
     def is_valid(self) -> bool:
         return numpy.all(self._ratio() < self.threshold)
 
+    @property
     def label(self) -> str:
         n = numpy.sum(self._ratio() >= self.threshold)
         return f"(a/b - 1) / sigma(a/b) > {self.threshold} for {n} bins"
@@ -349,12 +379,14 @@ class ResidualCheck(CompatCheck):
         pull[m] = numpy.abs(val[m]) / err[m]
         return val, err, pull
 
+    @functools.cached_property
     def is_valid(self) -> bool:
         val, err, pull = self._pulls
         return numpy.all(pull[~numpy.isnan(pull)] < self.threshold)
 
+    @functools.cached_property
     def label(self) -> str:
-        if self.is_valid():
+        if self.is_valid:
             return f"pull < {self.threshold}"
         else:
             return f"pull > {self.threshold}"

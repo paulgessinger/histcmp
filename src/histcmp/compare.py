@@ -1,13 +1,15 @@
 from pathlib import Path
 from typing import Tuple, List, Any
 import functools
-
-from rich.progress import track
 from dataclasses import dataclass, field
 
+from rich.progress import track
+from matplotlib import pyplot
+import numpy
 
 from histcmp.console import console, fail, info, good, warn
-from histcmp.root_helpers import integralAndError, get_bin_content
+from histcmp.root_helpers import integralAndError, get_bin_content, convert_hist
+from histcmp.plot import plot_ratio, plot_to_uri
 from histcmp import icons
 from histcmp.checks import (
     CompatCheck,
@@ -88,28 +90,64 @@ class ComparisonItem:
             c.SaveAs(out)
 
         if isinstance(self.item_a, ROOT.TH2):
-            for proj in "ProjectionX", "ProjectionY":
-                p = plot_dir / f"{self.key}_overlay_{proj}.png"
-                if p.exists():
-                    continue
-                item_a = getattr(self.item_a, proj)().Clone()
-                item_b = getattr(self.item_b, proj)().Clone()
-                item_a.SetDirectory(0)
-                item_b.SetDirectory(0)
-                do_plot(
-                    item_a,
-                    item_b,
-                    str(report_dir / p),
-                )
-                self._generic_plots.append(p)
-        elif isinstance(self.item_a, ROOT.TH1) or isinstance(
-            self.item_a, ROOT.TEfficiency
-        ):
-            p = plot_dir / f"{self.key}_overlay.png"
-            if not (report_dir / p).exists():
-                do_plot(self.item_a, self.item_b, str(report_dir / p))
+            h2_a = convert_hist(self.item_a)
+            h2_b = convert_hist(self.item_b)
 
-            self._generic_plots.append(p)
+            for proj in [0, 1]:
+                h1_a = h2_a.project(proj)
+                h1_b = h2_b.project(proj)
+
+                fig, _ = plot_ratio(h1_a, h1_b)
+                #  fig.savefig(f"{self.key}_p{proj}.png")
+                self._generic_plots.append(plot_to_uri(fig))
+
+            #  for proj in "ProjectionX", "ProjectionY":
+            #  p = plot_dir / f"{self.key}_overlay_{proj}.png"
+            #  if p.exists():
+            #  continue
+            #  item_a = getattr(self.item_a, proj)().Clone()
+            #  item_b = getattr(self.item_b, proj)().Clone()
+            #  item_a.SetDirectory(0)
+            #  item_b.SetDirectory(0)
+            #  do_plot(
+            #  item_a,
+            #  item_b,
+            #  str(report_dir / p),
+            #  )
+            #  self._generic_plots.append(p)
+        elif isinstance(self.item_a, ROOT.TEfficiency):
+            a = convert_hist(self.item_a)
+            b = convert_hist(self.item_b)
+
+            # find lowest non-zero entry
+            #  print(a.values()[a.values() > 0])
+            #  print(b.values()[b.values() > 0])
+            lowest = 0
+            nonzero = numpy.concatenate(
+                [a.values()[a.values() > 0], b.values()[b.values() > 0]]
+            )
+            if len(nonzero) > 0:
+                lowest = numpy.min(nonzero)
+            #  print(lowest)
+
+            fig, (ax, rax) = plot_ratio(a, b)
+            ax.set_ylim(bottom=lowest * 0.9)
+
+            #  fig.savefig(f"{self.key}.png")
+            self._generic_plots.append(plot_to_uri(fig))
+
+            #  p = plot_dir / f"{self.key}_overlay.png"
+            #  if not (report_dir / p).exists():
+            #  do_plot(self.item_a, self.item_b, str(report_dir / p))
+
+            #  self._generic_plots.append(p)
+
+        elif isinstance(self.item_a, ROOT.TH1):
+            a = convert_hist(self.item_a)
+            b = convert_hist(self.item_b)
+            fig, _ = plot_ratio(a, b)
+            #  fig.savefig(f"{self.key}.png")
+            self._generic_plots.append(plot_to_uri(fig))
 
     @property
     def first_plot_index(self):
@@ -186,11 +224,11 @@ def compare(a: Path, b: Path) -> Comparison:
         ):
             inst = test(item_a, item_b)
             item.checks.append(inst)
-            if inst.is_applicable():
-                if inst.is_valid():
-                    console.print(icons.success, inst, inst.label(), style="bold green")
+            if inst.is_applicable:
+                if inst.is_valid:
+                    console.print(icons.success, inst, inst.label, style="bold green")
                 else:
-                    console.print(icons.failure, inst, inst.label(), style="bold red")
+                    console.print(icons.failure, inst, inst.label, style="bold red")
             else:
                 console.print(icons.inconclusive, inst, style="yellow")
         result.common.append(item)

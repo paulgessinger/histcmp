@@ -5,32 +5,33 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta http-equiv="Cache-control" content="max-age=0">
         <link href="{{ static_url("css/bulma/bulma.min.css") }}" rel="stylesheet">
+        <link href="{{ static_url("css/main.css") }}" rel="stylesheet">
         <script src="{{ static_url("alpinejs.min.js") }}"></script>
         {% block head %}
         {% endblock %}
     </head>
     <body>
-        <div class="container">
-            <div class="block">
-                <section class="hero">
-                    <div class="hero-body">
-                        <p class="title">
-                            Histogram comparison
-                        </p>
-                        <p class="subtitle">
-                            {{ comparison.file_a }} vs. {{ comparison.file_b }}
-                        </p>
-                    </div>
-                </section>
-                <div class="columns is-fullheight is-centered">
-                    <div class="column is-full">
-                        <div class="box">
-                        {% block body %}
-                        {% endblock %}
+        <section class="section">
+            <div class="container">
+                <div class="block">
+                    <section class="hero">
+                        <div class="hero-body">
+                            <p class="title">
+                                Histogram comparison
+                            </p>
+                            <p class="subtitle">
+                                {{ comparison.file_a }} vs. {{ comparison.file_b }}
+                            </p>
                         </div>
+                    </section>
+                    <div class="container">
+                            <div class="box">
+                            {% block body %}
+                            {% endblock %}
+                            </div>
                     </div>
                 </div>
             </div>
-        </div>
+        </section>
     </body>
 </html>

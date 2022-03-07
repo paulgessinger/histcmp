@@ -1,6 +1,9 @@
 from typing import Tuple
 import ctypes
 import contextlib
+import hist
+import hist.intervals
+import re
 
 import numpy
 import ROOT
@@ -64,11 +67,104 @@ def get_bin_content_error(item) -> numpy.array:
     elif isinstance(item, ROOT.TH1):
         return (
             numpy.array(
-                [item.GetBinContent(b) for b in range(1, item.GetXaxis().GetNbins())]
+                [
+                    item.GetBinContent(b)
+                    for b in range(1, item.GetXaxis().GetNbins() + 1)
+                ]
             ),
             numpy.array(
-                [item.GetBinError(b) for b in range(1, item.GetXaxis().GetNbins())]
+                [item.GetBinError(b) for b in range(1, item.GetXaxis().GetNbins() + 1)]
             ),
         )
     else:
         raise TypeError(f"Invalid type {type(item)}")
+
+
+def _process_axis_title(s):
+    def repl(m):
+        (o,) = m.groups()
+        return "$" + "\\" + o[1:] + "$"
+
+    return re.sub(r"(#[a-zA-Z]+)", repl, s)
+
+
+def convert_axis(axis):
+    if axis.IsVariableBinSize():
+        edges = [axis.GetBinLowEdge(b) for b in range(1, axis.GetNbins() + 1)]
+        edges.append(axis.GetBinUpEdge(axis.GetNbins()))
+        axis = hist.axis.Variable(edges, name=_process_axis_title(axis.GetTitle()))
+        return axis
+    else:
+        #  print(axis.GetNbins())
+        ax = hist.axis.Regular(
+            axis.GetNbins(),
+            axis.GetBinLowEdge(1),
+            axis.GetBinUpEdge(axis.GetNbins()),
+            name=_process_axis_title(axis.GetTitle()),
+        )
+        #  print(ax)
+        return ax
+
+
+def convert_hist(item):
+    if isinstance(item, ROOT.TH2):
+        h = hist.Hist(
+            convert_axis(item.GetXaxis()),
+            convert_axis(item.GetYaxis()),
+            storage=hist.storage.Weight(),
+            name=_process_axis_title(item.GetTitle()),
+            label=_process_axis_title(item.GetZaxis().GetTitle()),
+        )
+        cont, err = get_bin_content_error(item)
+        h.view().value = cont
+        h.view().variance = err ** 2
+        return h
+    elif isinstance(item, ROOT.TEfficiency):
+        passed = convert_hist(item.GetPassedHistogram())
+        #  total = convert_hist(item.GetTotalHistogram())
+
+        eff = passed[:]
+        eff.reset()
+        eff.name = _process_axis_title(item.GetTitle())
+
+        nbins = item.GetPassedHistogram().GetNbinsX()
+        values = numpy.zeros(nbins)
+        error = numpy.zeros(nbins)
+        for b in range(1, nbins + 1):
+            values[b - 1] = item.GetEfficiency(b)
+            error[b - 1] = 0.5 * (
+                item.GetEfficiencyErrorUp(b) + item.GetEfficiencyErrorLow(b)
+            )
+
+        eff.view().value = values
+        eff.view().variance = error ** 2
+
+        #  print(eff.name)
+        #  print(values)
+        #  print(error)
+
+        #  eff.view().value = passed.view().value / total.view().value
+        #  lo, hi = hist.intervals.clopper_pearson_interval(
+        #  passed.view().value, total.view().value
+        #  )
+        #  #  print("vl", eff.view().value)
+        #  #  print("lo", lo)
+        #  #  print("hi", hi)
+        #  v = eff.view().value
+        #  lo = v - lo
+        #  hi = hi - v
+        #  eff.view().variance = (lo + hi) / 2.0 ** 2  # - eff.view().value  # ** 2
+
+        return eff
+
+    elif isinstance(item, ROOT.TH1):
+        h = hist.Hist(
+            convert_axis(item.GetXaxis()),
+            storage=hist.storage.Weight(),
+            name=_process_axis_title(item.GetTitle()),
+            label=_process_axis_title(item.GetYaxis().GetTitle()),
+        )
+        cont, err = get_bin_content_error(item)
+        h.view().value = cont
+        h.view().variance = err ** 2
+        return h

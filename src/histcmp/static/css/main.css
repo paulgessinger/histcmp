@@ -1,0 +1,13 @@
+.plot-container {
+  display:flex;
+  flex-wrap: wrap;
+}
+
+.plot-container .plot {
+}
+
+@media only screen and (max-width: 800px) {
+  .plot {
+    flex-basis:auto;
+  }
+}

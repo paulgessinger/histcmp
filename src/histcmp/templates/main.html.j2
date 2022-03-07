@@ -7,8 +7,12 @@
     </a>
     {% endfor %}
     <hr>
+
+    <div class="container plot-container">
     {% for item in comparison.common %}
+    <div class="column is-one-third plot">
     <div class="box">
+        <div class="block">
         <h2 class="title {% if item.status == Status.FAILURE -%}
         has-text-danger
         {%- elif item.status == Status.INCONCLUSIVE -%}
@@ -16,47 +20,44 @@
         {%- endif -%}" id="{{ item.key }}">
             {{ item.key }}
         </h2>
-        <div class="columns">
-            <div class="column is-half">
-                {% for plot in item.generic_plots %}
-                <img src="{{plot}}"/>
-                {% endfor %}
-            </div>
-            <div class="column is-half">
-                <div x-data="{open: {{item.first_plot_index or 0}} }">
-                    <div class="tabs">
-                        <ul>
-                            {% for check in item.checks %}
-                            <li :class="open == {{loop.index-1}} ? 'is-active' : ''">
-                            <a @click="open = {{loop.index-1}}"
-                            {% if check.status == Status.SUCCESS %}
-                                class="has-text-success"
-                            {% elif check.status == Status.FAILURE %}
-                            class="has-text-danger"
-                            {% elif check.status == Status.INCONCLUSIVE %}
-                            class="has-text-warning"
-                            {% endif %}
-                            >
-                                {{ check.status.icon | emojize }}
-                                {{ check }}</a></li>
-                            {% endfor %}
-                        </ul>
-                    </div>
-                    {% for check in item.checks %}
-                        <div x-show="open == {{loop.index-1}}">
-                            {% if check.is_applicable() %}
-                            {{ check.label() }}
-                            {% if check.plot is not none %}
-                                <img src="{{check.plot}}"/>
-                            {% endif %}
-                            {% else %}
-                            {{check}} is not applicable
-                            {% endif %}
-                        </div>
-                    {% endfor %}
-                </div>
-            </div>
         </div>
+
+        <div class="block">
+        {% for plot in item.generic_plots %}
+        <img src="{{plot}}"/>
+        {% endfor %}
+        </div>
+
+        <hr>
+        
+        <div class="block">
+            {% for check in item.checks %}
+            <div
+            {% if check.status == Status.SUCCESS %}
+                class="has-text-success"
+            {% elif check.status == Status.FAILURE %}
+            class="has-text-danger"
+            {% elif check.status == Status.INCONCLUSIVE %}
+            class="has-text-warning"
+            {% endif %}
+            >
+                {{ check.status.icon | emojize }}
+                {{ check }} <br/>
+            </div>
+            <div>
+                {% if check.is_applicable %}
+                {{ check.label }}
+                {% else %}
+                {{check}} is not applicable
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+
+
+    </div>
     </div>
     {% endfor %}
+    </div>
+    
 {% endblock %}
