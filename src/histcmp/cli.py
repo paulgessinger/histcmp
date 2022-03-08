@@ -20,7 +20,9 @@ app = typer.Typer()
 
 @app.command()
 def main(
-    config_path: Path = typer.Argument(..., dir_okay=False, exists=True),
+    config_path: Path = typer.Option(
+        None, "--config", "-c", dir_okay=False, exists=True
+    ),
     monitored: Path = typer.Argument(..., exists=True, dir_okay=False),
     reference: Path = typer.Argument(..., exists=True, dir_okay=False),
     output: Optional[Path] = typer.Option(None, "-o", "--output", dir_okay=False),
@@ -38,8 +40,24 @@ def main(
     info(f"Monitored: {monitored}")
     info(f"Reference: {reference}")
 
-    with config_path.open() as fh:
-        config = Config(**yaml.safe_load(fh))
+    if config_path is None:
+        config = Config(
+            checks={
+                "*": {
+                    k: None
+                    for k in [
+                        "Chi2Test",
+                        "KolmogorovTest",
+                        "RatioCheck",
+                        "ResidualCheck",
+                        "IntegralCheck",
+                    ]
+                }
+            }
+        )
+    else:
+        with config_path.open() as fh:
+            config = Config(**yaml.safe_load(fh))
 
     print(config)
 
