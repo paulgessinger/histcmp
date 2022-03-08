@@ -7,6 +7,7 @@ import ctypes
 import functools
 from enum import Enum
 from typing import Tuple, Optional
+import warnings
 
 import ROOT
 
@@ -160,18 +161,19 @@ class KolmogorovTest(ScoreThresholdCheck):
 
     @functools.cached_property
     def is_applicable(self) -> bool:
-        if isinstance(self.item_a, ROOT.TEfficiency):
-            passed = self.item_a.GetPassedHistogram()
-            total = self.item_a.GetTotalHistogram()
-            self.item_a = passed.Clone()
-            self.item_a.SetDirectory(0)
-            self.item_a.Divide(total)
+        with push_root_level(ROOT.kError):
+            if isinstance(self.item_a, ROOT.TEfficiency):
+                passed = self.item_a.GetPassedHistogram()
+                total = self.item_a.GetTotalHistogram()
+                self.item_a = passed.Clone()
+                self.item_a.SetDirectory(0)
+                self.item_a.Divide(total)
 
-            passed = self.item_b.GetPassedHistogram()
-            total = self.item_b.GetTotalHistogram()
-            self.item_b = passed.Clone()
-            self.item_b.SetDirectory(0)
-            self.item_b.Divide(total)
+                passed = self.item_b.GetPassedHistogram()
+                total = self.item_b.GetTotalHistogram()
+                self.item_b = passed.Clone()
+                self.item_b.SetDirectory(0)
+                self.item_b.Divide(total)
         int_a, _ = integralAndError(self.item_a)
         int_b, _ = integralAndError(self.item_b)
         return int_a != 0 and int_b != 0
@@ -187,17 +189,18 @@ class Chi2Test(ScoreThresholdCheck):
         self.threshold = threshold
 
         if isinstance(self.item_a, ROOT.TEfficiency):
-            passed = self.item_a.GetPassedHistogram()
-            total = self.item_a.GetTotalHistogram()
-            self.item_a = passed.Clone()
-            self.item_a.SetDirectory(0)
-            self.item_a.Divide(total)
+            with push_root_level(ROOT.kError):
+                passed = self.item_a.GetPassedHistogram()
+                total = self.item_a.GetTotalHistogram()
+                self.item_a = passed.Clone()
+                self.item_a.SetDirectory(0)
+                self.item_a.Divide(total)
 
-            passed = self.item_b.GetPassedHistogram()
-            total = self.item_b.GetTotalHistogram()
-            self.item_b = passed.Clone()
-            self.item_b.SetDirectory(0)
-            self.item_b.Divide(total)
+                passed = self.item_b.GetPassedHistogram()
+                total = self.item_b.GetTotalHistogram()
+                self.item_b = passed.Clone()
+                self.item_b.SetDirectory(0)
+                self.item_b.Divide(total)
 
         super().__init__(threshold=threshold, op=operator.gt, **kwargs)
 
@@ -277,17 +280,19 @@ class IntegralCheck(ScoreThresholdCheck):
         #  int_b, err_b = integralAndError(item_b)
 
         if isinstance(item_a, ROOT.TEfficiency):
-            passed = item_a.GetPassedHistogram()
-            total = item_a.GetTotalHistogram()
-            item_a = passed.Clone()
-            item_a.SetDirectory(0)
-            item_a.Divide(total)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)
+                passed = item_a.GetPassedHistogram()
+                total = item_a.GetTotalHistogram()
+                item_a = passed.Clone()
+                item_a.SetDirectory(0)
+                item_a.Divide(total)
 
-            passed = item_b.GetPassedHistogram()
-            total = item_b.GetTotalHistogram()
-            item_b = passed.Clone()
-            item_b.SetDirectory(0)
-            item_b.Divide(total)
+                passed = item_b.GetPassedHistogram()
+                total = item_b.GetTotalHistogram()
+                item_b = passed.Clone()
+                item_b.SetDirectory(0)
+                item_b.Divide(total)
         self.int_a, self.err_a = integralAndError(item_a)
         self.int_b, self.err_b = integralAndError(item_b)
 
@@ -321,33 +326,33 @@ class RatioCheck(CompatCheck):
 
         super().__init__(**kwargs)
 
-        if isinstance(item_a, ROOT.TEfficiency):
-            passed = item_a.GetPassedHistogram()
-            total = item_a.GetTotalHistogram()
-            item_a = passed.Clone()
-            item_a.SetDirectory(0)
-            item_a.Divide(total)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            if isinstance(item_a, ROOT.TEfficiency):
+                    passed = item_a.GetPassedHistogram()
+                    total = item_a.GetTotalHistogram()
+                    item_a = passed.Clone()
+                    item_a.SetDirectory(0)
+                    item_a.Divide(total)
 
-            passed = item_b.GetPassedHistogram()
-            total = item_b.GetTotalHistogram()
-            item_b = passed.Clone()
-            item_b.SetDirectory(0)
-            item_b.Divide(total)
+                    passed = item_b.GetPassedHistogram()
+                    total = item_b.GetTotalHistogram()
+                    item_b = passed.Clone()
+                    item_b.SetDirectory(0)
+                    item_b.Divide(total)
 
-        elif isinstance(item_a, ROOT.TProfile):
-            item_a = item_a.ProjectionX()
-            item_b = item_b.ProjectionX()
+            elif isinstance(item_a, ROOT.TProfile):
+                item_a = item_a.ProjectionX()
+                item_b = item_b.ProjectionX()
 
-        try:
-            ratio = item_a.Clone()
-            ratio.SetDirectory(0)
-            ratio.Divide(item_b)
-            #  print(get_bin_content(item_a))
-            #  print(get_bin_content(item_b))
-            self.applicable = True
-            self.ratio = ratio
-        except Exception:
-            self.applicable = False
+            try:
+                ratio = item_a.Clone()
+                ratio.SetDirectory(0)
+                ratio.Divide(item_b)
+                self.applicable = True
+                self.ratio = ratio
+            except Exception:
+                self.applicable = False
 
     def make_plot(self, output: Path) -> bool:
         if not self.applicable:
@@ -371,6 +376,8 @@ class RatioCheck(CompatCheck):
 
     @functools.lru_cache(1)
     def _ratio(self):
+        if self.ratio is None:
+            return []
         ratio, err = get_bin_content_error(self.ratio)
         #  print(ratio, err)
         m = ratio != 0.0
@@ -406,24 +413,33 @@ class ResidualCheck(CompatCheck):
 
         super().__init__(**kwargs)
 
-        if isinstance(self.item_a, ROOT.TEfficiency):
-            self.item_a = self.item_a.CreateGraph().GetHistogram()
-            self.item_b = self.item_b.CreateGraph().GetHistogram()
-        if isinstance(self.item_a, ROOT.TProfile):
-            self.item_a = self.item_a.ProjectionX()
-            self.item_b = self.item_b.ProjectionX()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            if isinstance(self.item_a, ROOT.TEfficiency):
+                with push_root_level(ROOT.kError):
+                    passed = self.item_a.GetPassedHistogram()
+                    total = self.item_a.GetTotalHistogram()
+                    self.item_a = passed.Clone()
+                    self.item_a.SetDirectory(0)
+                    self.item_a.Divide(total)
 
-        try:
-            self.residual = self.item_a.Clone()
-            self.residual.SetDirectory(0)
-            #  print(*get_bin_content_error(self.residual))
-            #  print(*get_bin_content_error(self.item_b))
-            self.residual.Add(self.item_b, -1)
-            #  print(*get_bin_content_error(self.residual))
+                    passed = self.item_b.GetPassedHistogram()
+                    total = self.item_b.GetTotalHistogram()
+                    self.item_b = passed.Clone()
+                    self.item_b.SetDirectory(0)
+                    self.item_b.Divide(total)
+            if isinstance(self.item_a, ROOT.TProfile):
+                self.item_a = self.item_a.ProjectionX()
+                self.item_b = self.item_b.ProjectionX()
 
-            self.applicable = True
-        except Exception:
-            self.applicable = False
+            try:
+                self.residual = self.item_a.Clone()
+                self.residual.SetDirectory(0)
+                self.residual.Add(self.item_b, -1)
+
+                self.applicable = True
+            except Exception:
+                self.applicable = False
 
     def is_applicable(self) -> bool:
         val, err, pull = self._pulls
