@@ -14,6 +14,7 @@ from histcmp.console import fail, info, console
 from histcmp.report import make_report
 from histcmp.checks import Status
 from histcmp.config import Config
+from histcmp.github import is_github_actions, github_actions_marker
 
 #  install(show_locals=True)
 
@@ -75,12 +76,30 @@ def main(
         status = Status.SUCCESS
         style = "bold green"
 
-        if any(c.status == Status.FAILURE for c in comparison.common):
+        if (
+            any(c.status == Status.FAILURE for c in comparison.common)
+            and len(removed) == 0
+            and len(new) == 0
+        ):
             status = Status.FAILURE
             style = "bold red"
-        if all(c.status == Status.INCONCLUSIVE for c in comparison.common):
+            if is_github_actions:
+                print(
+                    github_actions_marker(
+                        "error",
+                        f"Comparison between {monitored} and {reference} failed!",
+                    )
+                )
+        elif all(c.status == Status.INCONCLUSIVE for c in comparison.common):
             status = Status.INCONCLUSIVE
             style = "bold yellow"
+            if is_github_actions:
+                print(
+                    github_actions_marker(
+                        "error",
+                        f"Comparison between {monitored} and {reference} was inconclusive!",
+                    )
+                )
 
         console.print(
             Panel(

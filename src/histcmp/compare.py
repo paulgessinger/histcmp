@@ -3,7 +3,6 @@ from typing import Tuple, List, Any
 import functools
 from dataclasses import dataclass, field
 import fnmatch
-import os
 
 from rich.progress import track
 from rich.text import Text
@@ -15,6 +14,7 @@ from histcmp.root_helpers import integralAndError, get_bin_content, convert_hist
 from histcmp.plot import plot_ratio, plot_to_uri
 from histcmp import icons
 import histcmp.checks
+from histcmp.github import is_github_actions, github_actions_marker
 
 from histcmp.checks import (
     CompatCheck,
@@ -23,14 +23,6 @@ from histcmp.checks import (
 from histcmp.config import Config
 
 import ROOT
-
-
-is_github_actions = "GITHUB_ACTIONS" in os.environ
-
-
-def github_actions_marker(level, message):
-    message = message.replace("\n", "%0A")
-    return f"::{level} ::{message}"
 
 
 class ComparisonItem:
@@ -260,14 +252,12 @@ def compare(config: Config, a: Path, b: Path) -> Comparison:
                             )
                         console.print(icons.failure, inst, inst.label, style="bold red")
                 else:
-                    if is_github_actions:
-                        print(
-                            github_actions_marker(
-                                "warning", key + ": " + str(inst) + " is not applicable"
-                            )
-                        )
                     console.print(icons.inconclusive, inst, style="yellow")
+
         result.common.append(item)
+
+        if all(c.status == Status.INCONCLUSIVE for c in item.checks):
+            print(github_actions_marker("warning", key + ": has no applicable checks"))
 
     info(f"{len(removed)} elements are missing in new file")
     info(f"{len(new)} elements are added new file")
