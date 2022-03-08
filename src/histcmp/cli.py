@@ -3,7 +3,9 @@ from typing import Optional
 
 import typer
 from rich.panel import Panel
+from rich.console import Group
 from rich.text import Text
+from rich.pretty import Pretty
 from rich.emoji import Emoji
 import jinja2
 import yaml
@@ -36,9 +38,12 @@ def main(
 
     from histcmp.compare import compare
 
-    info(f"Comparing files:")
-    info(f"Monitored: {monitored}")
-    info(f"Reference: {reference}")
+    console.print(
+        Panel(
+            Group(f"Monitored: {monitored}", f"Reference: {reference}"),
+            title="Comparing files:",
+        )
+    )
 
     if config_path is None:
         config = Config(
@@ -59,10 +64,10 @@ def main(
         with config_path.open() as fh:
             config = Config(**yaml.safe_load(fh))
 
-    print(config)
+    console.print(Panel(Pretty(config), title="Configuration"))
 
     try:
-        comparison = compare(config, monitored, reference)
+        comparison, removed, new = compare(config, monitored, reference)
 
         if output is not None:
             make_report(comparison, output)
