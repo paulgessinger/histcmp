@@ -14,6 +14,7 @@ from histcmp.compare import Comparison
 from histcmp.checks import Status
 from histcmp.console import console
 from histcmp.root_helpers import push_root_level
+from histcmp import icons
 
 current_depth = 0
 current_url = "/"
@@ -115,11 +116,14 @@ def make_environment() -> jinja2.Environment:
     env.globals["static_url"] = static_url
     env.globals["static_content"] = static_content
 
+    env.globals["icons"] = icons
+
     env.globals["url_for"] = url_for
     env.globals["current_url"] = get_current_url
     env.globals["Status"] = Status
 
     env.filters["emojize"] = _emojize
+
     #  env.filters["dateformat"] = dateformat
 
     return env

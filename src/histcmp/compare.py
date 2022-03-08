@@ -18,6 +18,7 @@ from histcmp.github import is_github_actions, github_actions_marker
 
 from histcmp.checks import (
     CompatCheck,
+    CompositeCheck,
     Status,
 )
 from histcmp.config import Config
@@ -41,7 +42,7 @@ class ComparisonItem:
     @functools.cached_property
     def status(self) -> Status:
         statuses = [c.status for c in self.checks]
-        if any(s == Status.FAILURE for s in statuses):
+        if any(c.status == Status.FAILURE and not c.is_disabled for c in self.checks):
             return Status.FAILURE
         if all(s == Status.SUCCESS for s in statuses):
             return Status.SUCCESS
@@ -221,36 +222,70 @@ def compare(config: Config, a: Path, b: Path) -> Comparison:
             if not fnmatch.fnmatch(key, pattern):
                 continue
 
+            #  print(key, pattern, "matches")
+
             for cname, check_kw in checks.items():
                 ctype = getattr(histcmp.checks, cname)
                 if ctype not in configured_checks:
-                    configured_checks[ctype] = check_kw or {}
+                    #  print("Adding", cname, "kw:", check_kw)
+                    configured_checks[ctype] = (
+                        {} if check_kw is None else check_kw.copy()
+                    )
                 else:
+                    #  print("Modifying", cname)
                     if check_kw is None:
+                        #  print("-> setting disabled")
                         configured_checks[ctype].update({"disabled": True})
                     else:
+                        #  print("-> updating kw")
                         configured_checks[ctype].update(check_kw)
+
+        #  print(configured_checks)
 
         for ctype, check_kw in configured_checks.items():
             #  print(ctype, check_kw)
-            inst = ctype(item_a, item_b, **check_kw)
-            item.checks.append(inst)
-            if inst.is_disabled:
-                console.print(icons.disabled, Text(str(inst), style="strike"))
+            subchecks = []
+            if isinstance(item_a, ROOT.TH2):
+                for proj in "ProjectionX", "ProjectionY":
+                    proj_a = getattr(item_a, proj)().Clone()
+                    proj_b = getattr(item_b, proj)().Clone()
+                    proj_a.SetDirectory(0)
+                    proj_b.SetDirectory(0)
+                    subchecks.append(
+                        ctype(proj_a, proj_b, suffix="p" + proj[-1], **check_kw)
+                    )
             else:
+                subchecks.append(ctype(item_a, item_b, **check_kw))
+
+            dstyle = "strike"
+            for inst in subchecks:
+                item.checks.append(inst)
                 if inst.is_applicable:
                     if inst.is_valid:
                         console.print(
-                            icons.success, inst, inst.label, style="bold green"
+                            icons.success,
+                            Text(
+                                str(inst),
+                                style="bold green" if not inst.is_disabled else dstyle,
+                            ),
+                            inst.label,
                         )
                     else:
-                        if is_github_actions:
+                        if is_github_actions and not inst.is_disabled:
                             print(
                                 github_actions_marker(
-                                    "error", key + ": " + str(inst) + "\n" + inst.label
+                                    "error",
+                                    key + ": " + str(inst) + "\n" + inst.label,
                                 )
                             )
-                        console.print(icons.failure, inst, inst.label, style="bold red")
+                        console.print(
+                            icons.failure,
+                            Text(
+                                str(inst),
+                                style="bold red" if not inst.is_disabled else dstyle,
+                            ),
+                            inst.label,
+                        )
                 else:
                     console.print(icons.inconclusive, inst, style="yellow")
 

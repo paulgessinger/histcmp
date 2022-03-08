@@ -70,9 +70,6 @@ def main(
     try:
         comparison, removed, new = compare(config, monitored, reference)
 
-        if output is not None:
-            make_report(comparison, output)
-
         status = Status.SUCCESS
         style = "bold green"
 
@@ -107,6 +104,9 @@ def main(
                 style=style,
             )
         )
+
+        if output is not None:
+            make_report(comparison, output)
 
         if status != Status.SUCCESS:
             raise typer.Exit(1)

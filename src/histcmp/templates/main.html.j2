@@ -34,17 +34,20 @@
             <div class="tags">
             {% for check in item.checks %}
             <a @click="open = open == {{loop.index}} ? 0 : {{loop.index}}" :class="open == {{loop.index}} ? 'active' : ''"
-            {% if check.status == Status.SUCCESS %}
+            {% if check.is_disabled %}
+            class="check tag is-light"
+            {% elif check.status == Status.SUCCESS %}
             class="check tag is-success"
             {% elif check.status == Status.FAILURE %}
             class="check tag is-danger"
-            {% elif check.status == Status.DISABLED %}
-            class="check tag is-light"
             {% elif check.status == Status.INCONCLUSIVE %}
             class="check tag is-warning"
             {% endif %}
             >
                 {#{{ check.status.icon | emojize }}#}
+                {% if check.is_disabled %}
+                    {{ check.status.icon | emojize }}
+                {% endif %}
                 {{ check }}
             </a>
 
@@ -55,10 +58,8 @@
             <div x-show="open == {{loop.index}}" class="notification">
                 {% if not check.is_applicable %}
                     {{check}} is not applicable
-                {% elif check.is_disabled %}
-                    {{check}} is disabled
                 {% else %}
-                    {{ check.label }}
+                {{ check.label.strip() | replace("\n", "<br>") | replace("---", "<hr class='check_rule'>") }}
                 {% endif %}
             </div>
             </div>

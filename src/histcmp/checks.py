@@ -6,7 +6,7 @@ from pathlib import Path
 import ctypes
 import functools
 from enum import Enum
-from typing import Tuple, Optional
+from typing import Tuple, Optional, List
 import warnings
 
 import ROOT
@@ -25,7 +25,7 @@ class Status(Enum):
     SUCCESS = 1
     FAILURE = 2
     INCONCLUSIVE = 3
-    DISABLED = 4
+    #  DISABLED = 4
 
     @property
     def icon(self):
@@ -33,8 +33,8 @@ class Status(Enum):
             return icons.success
         elif self == Status.INCONCLUSIVE:
             return icons.inconclusive
-        elif self == Status.DISABLED:
-            return icons.disabled
+        #  elif self == Status.DISABLED:
+            #  return icons.disabled
         else:
             return icons.failure
 
@@ -63,9 +63,10 @@ chi2result = collections.namedtuple(
 
 
 class CompatCheck(ABC):
-    def __init__(self, disabled: bool = False):
+    def __init__(self, disabled: bool = False, suffix: Optional[str] = None):
         self.disabled = disabled
         self._plot = None
+        self.suffix = suffix
 
     @property
     def is_disabled(self) -> bool: 
@@ -87,9 +88,7 @@ class CompatCheck(ABC):
     def status(self) -> Status:
         if not self.is_applicable:
             return Status.INCONCLUSIVE
-        if self.is_disabled:
-            return Status.DISABLED
-        if self.is_valid:
+        elif self.is_valid:
             return Status.SUCCESS
         else:
             return Status.FAILURE
@@ -112,6 +111,36 @@ class CompatCheck(ABC):
     def plot(self) -> Optional[Path]:
         return self._plot
 
+    @abstractproperty
+    def name(self) -> str:
+        raise NotImplementedError()
+
+    def __str__(self) -> str:
+        return self.name + (" "+self.suffix if self.suffix is not None else "")
+
+
+class CompositeCheck(CompatCheck):
+    def __init__(self, *args:List[CompatCheck], **kwargs):
+        super().__init__(**kwargs)
+        self.checks = args
+
+        self.disabled = any(c.is_disabled for c in self.checks)
+
+    @property
+    def is_applicable(self)->bool:
+        return all(c.is_applicable for c in self.checks)
+
+    @property
+    def is_valid(self) -> bool:
+        return all(c.is_valid for c in self.checks)
+
+    @property
+    def label(self) -> str:
+        return " --- ".join(c.label for c in self.checks)
+
+    @property
+    def name(self)-> str:
+        return " + ".join(str(c) for c in self.checks)
 
 class ScoreThresholdCheck(CompatCheck):
     def __init__(self, threshold: float, op, **kwargs):
@@ -178,7 +207,8 @@ class KolmogorovTest(ScoreThresholdCheck):
         int_b, _ = integralAndError(self.item_b)
         return int_a != 0 and int_b != 0
 
-    def __str__(self) -> str:
+    @property
+    def name(self) -> str:
         return "KolmogorovTest"
 
 
@@ -263,7 +293,8 @@ class Chi2Test(ScoreThresholdCheck):
 
         return True
 
-    def __str__(self) -> str:
+    @property
+    def name(self) -> str:
         return "Chi2Test"
 
 
@@ -312,7 +343,8 @@ class IntegralCheck(ScoreThresholdCheck):
     def is_applicable(self) -> bool:
         return self.sigma != float("inf")
 
-    def __str__(self) -> str:
+    @property
+    def name(self) -> str:
         return "IntegralTest"
 
 
@@ -390,10 +422,10 @@ class RatioCheck(CompatCheck):
     @property
     def is_valid(self) -> bool:
         #  print("ratio:", self._ratio())
-        nabove = numpy.sum(numpy.abs(self._ratio()) < self.threshold)
+        nabove = numpy.sum(numpy.abs(self._ratio()) >= self.threshold)
         nbins = len(self._ratio())
         
-        return nabove > numpy.sqrt(nbins)
+        return nabove < numpy.sqrt(nbins)
 
     @property
     def label(self) -> str:
@@ -401,7 +433,8 @@ class RatioCheck(CompatCheck):
         nbins = len(self._ratio())
         return f"(a/b - 1) / sigma(a/b) > {self.threshold} for {n}/{nbins} bins, cf. {numpy.sqrt(nbins)}"
 
-    def __str__(self) -> str:
+    @property
+    def name(self) -> str:
         return "RatioCheck"
 
 
@@ -457,8 +490,8 @@ class ResidualCheck(CompatCheck):
     @functools.cached_property
     def is_valid(self) -> bool:
         val, err, pull = self._pulls
-        nabove= numpy.sum(pull[~numpy.isnan(pull)] < self.threshold)
-        return nabove > numpy.sqrt(len(val))
+        nabove= numpy.sum(pull[~numpy.isnan(pull)] >= self.threshold)
+        return nabove < numpy.sqrt(len(val))
 
     @functools.cached_property
     def label(self) -> str:
@@ -466,9 +499,9 @@ class ResidualCheck(CompatCheck):
         count = numpy.sum(pull[~numpy.isnan(pull)] >= self.threshold)
         pe = numpy.sqrt(len(val))
         if self.is_valid:
-            return f"pull < {self.threshold} in {len(val)-count} bins, cf. {pe}"
+            return f"pull < {self.threshold} in {len(val)-count}/{len(val)} bins, cf. {pe}"
         else:
-            return f"pull > {self.threshold} in {count} bins, cf. {pe}"
+            return f"pull > {self.threshold} in {count}/{len(val)} bins, cf. {pe}"
 
     def make_plot(self, output: Path) -> bool:
         if not self.applicable:
@@ -483,5 +516,6 @@ class ResidualCheck(CompatCheck):
         c.SaveAs(str(output))
         return True
 
-    def __str__(self) -> str:
+    @property
+    def name(self) -> str:
         return "ResidualCheck"

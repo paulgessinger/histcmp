@@ -19,3 +19,11 @@ h2 a {
 .check.active {
   font-weight:bold;
 }
+
+hr.check_rule {
+  background-color:hsl(0, 0%, 86%);
+}
+
+hr + br {
+  display: none;
+}
