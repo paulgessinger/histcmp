@@ -5,6 +5,7 @@ import typer
 from rich.panel import Panel
 from rich.console import Group
 from rich.text import Text
+from rich.rule import Rule
 from rich.pretty import Pretty
 from rich.emoji import Emoji
 import jinja2
@@ -68,18 +69,57 @@ def main(
     console.print(Panel(Pretty(config), title="Configuration"))
 
     try:
-        comparison, removed, new = compare(config, monitored, reference)
+        comparison = compare(config, monitored, reference)
+
+        #  console.print(
+        #  Panel(
+        #  Text(        f":information: {len(common)} common elements between files", style="info")
+        #  Text(        f":information: {len(result.a_only)} only found in file a", style="info")
+        #  Text(        f":information: {len(result.b_only)} common elements between files", style="info")
+        #  )
+        #  )
 
         status = Status.SUCCESS
         style = "bold green"
+        failures = [c for c in comparison.items if c.status == Status.FAILURE]
+        inconclusive = [c for c in comparison.items if c.status == Status.INCONCLUSIVE]
+        msg = [
+            Text.from_markup(
+                f"[cyan]{len(comparison.items)}[/cyan] checked items valid",
+                justify="center",
+            ),
+        ]
 
         if (
-            any(c.status == Status.FAILURE for c in comparison.common)
-            and len(removed) == 0
-            and len(new) == 0
+            len(failures) > 0
+            or len(comparison.a_only) > 0
+            or len(comparison.b_only) > 0
         ):
             status = Status.FAILURE
             style = "bold red"
+            msg = [
+                Text.from_markup(
+                    f"[cyan]{len(failures)}[/cyan] items failed checks out of [cyan]{len(comparison.items)}[/cyan] common items",
+                    justify="center",
+                ),
+            ]
+            if len(comparison.a_only) > 0:
+                msg += [
+                    Rule(
+                        style=style,
+                        title=f"Monitored contains {len(comparison.a_only)} elements not in reference",
+                    ),
+                    Text(", ".join(f"{k} ({t})" for k, t in comparison.a_only)),
+                ]
+            if len(comparison.b_only) > 0:
+                msg += [
+                    Rule(
+                        style=style,
+                        title=f"Reference contains {len(comparison.b_only)} elements not in monitored",
+                    ),
+                    Text(", ".join(f"{k} ({t})" for k, t in comparison.b_only)),
+                ]
+
             if is_github_actions:
                 print(
                     github_actions_marker(
@@ -87,9 +127,15 @@ def main(
                         f"Comparison between {monitored} and {reference} failed!",
                     )
                 )
-        elif all(c.status == Status.INCONCLUSIVE for c in comparison.common):
+        elif len(inconclusive) > 0:
             status = Status.INCONCLUSIVE
             style = "bold yellow"
+            msg = [
+                Rule(style=style),
+                Text(
+                    f"[cyan]{len(inconclusive)}[/cyan] items had inconclusive checks out of [cyan]{len(comparison.items)}[/cyan] common items"
+                ),
+            ]
             if is_github_actions:
                 print(
                     github_actions_marker(
@@ -100,7 +146,12 @@ def main(
 
         console.print(
             Panel(
-                Text(f"{Emoji.replace(status.icon)} {status.name}", justify="center"),
+                Group(
+                    Text(
+                        f"{Emoji.replace(status.icon)} {status.name}", justify="center"
+                    ),
+                    *msg,
+                ),
                 style=style,
             )
         )

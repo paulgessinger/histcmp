@@ -6,6 +6,7 @@ import fnmatch
 
 from rich.progress import track
 from rich.text import Text
+from rich.panel import Panel
 from matplotlib import pyplot
 import numpy
 
@@ -166,7 +167,12 @@ class ComparisonItem:
 class Comparison:
     file_a: str
     file_b: str
-    common: list = field(default_factory=list)
+
+    items: list = field(default_factory=list)
+
+    common: set = field(default_factory=set)
+    a_only: set = field(default_factory=set)
+    b_only: set = field(default_factory=set)
 
 
 def can_handle_item(item) -> bool:
@@ -184,13 +190,6 @@ def compare(config: Config, a: Path, b: Path) -> Comparison:
 
     common = keys_a.intersection(keys_b)
 
-    removed = keys_b - keys_a
-    new = keys_a - keys_b
-
-    console.print(
-        f":information: {len(common)} common elements between files", style="info"
-    )
-
     result = Comparison(file_a=str(a), file_b=str(b))
 
     for key in track(sorted(common), console=console, description="Comparing..."):
@@ -206,8 +205,8 @@ def compare(config: Config, a: Path, b: Path) -> Comparison:
             fail(
                 f"Type mismatch between files for key {key}: {item_a} != {type(item_b)} => treating as both removed and newly added"
             )
-            removed.add(key)
-            new.add(key)
+            result.a_only.add(key)
+            result.a_only.add(key)
 
         console.rule(f"{key} ({item_a.__class__.__name__})")
 
@@ -289,12 +288,13 @@ def compare(config: Config, a: Path, b: Path) -> Comparison:
                 else:
                     console.print(icons.inconclusive, inst, style="yellow")
 
-        result.common.append(item)
+        result.items.append(item)
 
         if all(c.status == Status.INCONCLUSIVE for c in item.checks):
             print(github_actions_marker("warning", key + ": has no applicable checks"))
 
-    info(f"{len(removed)} elements are missing in new file")
-    info(f"{len(new)} elements are added new file")
+    result.b_only = {(k, rf_b.Get(k).__class__.__name__) for k in (keys_b - keys_a)}
+    result.a_only = {(k, rf_a.Get(k).__class__.__name__) for k in (keys_a - keys_b)}
+    result.common = {(k, rf_a.Get(k).__class__.__name__) for k in common}
 
-    return result, removed, new
+    return result
