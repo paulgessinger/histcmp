@@ -150,7 +150,7 @@ def make_report(comparison: Comparison, output: Path):
     import ROOT
 
     with push_root_level(ROOT.kWarning):
-        for item in track(
+        for item, _ in track(
             comparison.common, description="Making plots", console=console
         ):
             p = item.ensure_plots(output, plot_dir)
