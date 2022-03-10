@@ -150,8 +150,8 @@ def make_report(comparison: Comparison, output: Path):
     import ROOT
 
     with push_root_level(ROOT.kWarning):
-        for item, _ in track(
-            comparison.common, description="Making plots", console=console
+        for item in track(
+            comparison.items, description="Making plots", console=console
         ):
             p = item.ensure_plots(output, plot_dir)
             if p is not None:
