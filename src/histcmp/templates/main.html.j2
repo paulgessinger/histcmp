@@ -1,7 +1,7 @@
 {% extends "base.html.j2" %}
 
 {% block body %}
-    {% for item in comparison.common %}
+    {% for item in comparison.items %}
     <a href="#{{ item.key }}" title="{{ item.key }}">
         {{ item.status.icon | emojize }}
     </a>
@@ -9,7 +9,7 @@
     <hr>
 
     <div class="container plot-container">
-    {% for item in comparison.common %}
+    {% for item in comparison.items %}
     <div class="column is-one-third plot">
     <div class="box">
         <div class="block">
