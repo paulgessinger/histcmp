@@ -30,6 +30,9 @@ def main(
     monitored: Path = typer.Argument(..., exists=True, dir_okay=False),
     reference: Path = typer.Argument(..., exists=True, dir_okay=False),
     output: Optional[Path] = typer.Option(None, "-o", "--output", dir_okay=False),
+    label_monitored: Optional[str] = None,
+    label_reference: Optional[str] = None,
+    title: str = "Histogram comparison",
 ):
     try:
         import ROOT
@@ -70,6 +73,10 @@ def main(
 
     try:
         comparison = compare(config, monitored, reference)
+
+        comparison.label_monitored = label_monitored
+        comparison.label_reference = label_reference
+        comparison.title = title
 
         #  console.print(
         #  Panel(

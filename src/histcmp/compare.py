@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Tuple, List, Any
+from typing import Tuple, List, Any, Optional
 import functools
 from dataclasses import dataclass, field
 import fnmatch
@@ -168,11 +168,16 @@ class Comparison:
     file_a: str
     file_b: str
 
+    label_monitored: Optional[str] = None
+    label_reference: Optional[str] = None
+
     items: list = field(default_factory=list)
 
     common: set = field(default_factory=set)
     a_only: set = field(default_factory=set)
     b_only: set = field(default_factory=set)
+
+    title: str = "Histogram comparison"
 
 
 def can_handle_item(item) -> bool:

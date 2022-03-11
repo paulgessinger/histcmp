@@ -26,10 +26,17 @@
                     <section class="hero">
                         <div class="hero-body">
                             <p class="title">
-                                Histogram comparison
+                                {{ comparison.title }}
                             </p>
                             <p class="subtitle">
-                                {{ comparison.file_a }} vs. {{ comparison.file_b }}
+                                {{ comparison.file_a }} 
+                                {% if comparison.label_monitored is not none %}
+                                [{{ comparison.label_monitored }}]
+                                {% endif %}
+                                vs. {{ comparison.file_b }}
+                                {% if comparison.label_reference is not none %}
+                                [{{ comparison.label_reference }}]
+                                {% endif %}
                             </p>
                         </div>
                     </section>
