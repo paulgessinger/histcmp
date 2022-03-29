@@ -126,7 +126,7 @@ woff = ["zopfli (>=0.1.4)", "brotlicffi (>=0.8.0)", "brotli (>=1.0.1)"]
 
 [[package]]
 name = "hist"
-version = "2.6.0"
+version = "2.6.1"
 description = "Hist classes and utilities"
 category = "main"
 optional = false
@@ -142,10 +142,11 @@ numpy = ">=1.14.5"
 scipy = {version = ">=1.4", optional = true, markers = "extra == \"plot\""}
 
 [package.extras]
-all = ["Sphinx (>=3.0.0)", "iminuit (>=2)", "ipykernel", "ipython", "matplotlib (>=3.0)", "mplhep (>=0.2.16)", "myst-parser (>=0.14)", "nbsphinx", "pillow", "pytest (>=6)", "pytest-mpl (>=0.12)", "scipy (>=1.4)", "sphinx-book-theme (>=0.0.38)", "sphinx-copybutton", "sphinx-rtd-theme (>=0.5.0)", "uncertainties (>=3)"]
-dev = ["pytest (>=6)", "pytest-mpl (>=0.12)", "matplotlib (>=3.0)", "scipy (>=1.4)", "iminuit (>=2)", "mplhep (>=0.2.16)", "ipykernel"]
-docs = ["matplotlib (>=3.0)", "scipy (>=1.4)", "iminuit (>=2)", "mplhep (>=0.2.16)", "nbsphinx", "Sphinx (>=3.0.0)", "sphinx-copybutton", "sphinx-rtd-theme (>=0.5.0)", "sphinx-book-theme (>=0.0.38)", "ipython", "ipykernel", "pillow", "uncertainties (>=3)", "myst-parser (>=0.14)"]
-plot = ["matplotlib (>=3.0)", "scipy (>=1.4)", "iminuit (>=2)", "mplhep (>=0.2.16)"]
+all = ["Sphinx (>=3.0.0)", "iminuit (>=2)", "ipykernel", "ipython", "ipython-genutils", "matplotlib (>=3.0)", "mplhep (>=0.2.16)", "myst-parser (>=0.14)", "nbsphinx", "pillow", "pytest (>=6)", "pytest-mpl (>=0.12)", "scipy (>=1.4)", "sphinx-book-theme (>=0.0.38)", "sphinx-copybutton", "sphinx-rtd-theme (>=0.5.0)", "uncertainties (>=3)"]
+dev = ["pytest (>=6)", "pytest-mpl (>=0.12)", "matplotlib (>=3.0)", "mplhep (>=0.2.16)", "scipy (>=1.4)", "iminuit (>=2)", "ipykernel"]
+docs = ["matplotlib (>=3.0)", "mplhep (>=0.2.16)", "scipy (>=1.4)", "iminuit (>=2)", "ipython-genutils", "nbsphinx", "Sphinx (>=3.0.0)", "sphinx-copybutton", "sphinx-rtd-theme (>=0.5.0)", "sphinx-book-theme (>=0.0.38)", "ipython", "ipykernel", "pillow", "uncertainties (>=3)", "myst-parser (>=0.14)"]
+mpl = ["matplotlib (>=3.0)", "mplhep (>=0.2.16)"]
+plot = ["matplotlib (>=3.0)", "mplhep (>=0.2.16)", "scipy (>=1.4)", "iminuit (>=2)"]
 test = ["pytest (>=6)", "pytest-mpl (>=0.12)"]
 
 [[package]]
@@ -544,7 +545,7 @@ python-versions = "*"
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.8,<4.0"
-content-hash = "d4c76a703051437271e9fbb4a94cbba1b943d3a5ad46d46c151517a886370db7"
+content-hash = "650f0022f33077a4b485a376884089a63b7bae7886553a5de5dd5684dfce4357"
 
 [metadata.files]
 appdirs = [
@@ -641,8 +642,8 @@ fonttools = [
     {file = "fonttools-4.29.1.zip", hash = "sha256:2b18a172120e32128a80efee04cff487d5d140fe7d817deb648b2eee023a40e4"},
 ]
 hist = [
-    {file = "hist-2.6.0-py3-none-any.whl", hash = "sha256:adab433632beea77b390b4487f112e99a30a24d645ef510d2f0b9ede900a4727"},
-    {file = "hist-2.6.0.tar.gz", hash = "sha256:bf1ab7f79d848e47552d8f8efd00d574f0bdd3a200e2b6319e3e4c17e5cc78a4"},
+    {file = "hist-2.6.1-py3-none-any.whl", hash = "sha256:bde4936ffbef70ced93aedd69eb921c0d851ad00a152e41bf6b93c396c8f7aff"},
+    {file = "hist-2.6.1.tar.gz", hash = "sha256:ee9034795fd2feefed923461aaccaf76f87c1f8d5414b1e704faa293ceb4fc27"},
 ]
 histoprint = [
     {file = "histoprint-2.2.1-py3-none-any.whl", hash = "sha256:b373df678bde3cc0328d048094618054ee4069351532f83591d5e7cbb6635915"},
