@@ -11,8 +11,13 @@ from matplotlib import pyplot
 import numpy
 
 from histcmp.console import console, fail, info, good, warn
-from histcmp.root_helpers import integralAndError, get_bin_content, convert_hist
-from histcmp.plot import plot_ratio, plot_to_uri
+from histcmp.root_helpers import (
+    integralAndError,
+    get_bin_content,
+    convert_hist,
+    tefficiency_to_th1,
+)
+from histcmp.plot import plot_ratio, plot_ratio_eff, plot_to_uri
 from histcmp import icons
 import histcmp.checks
 from histcmp.github import is_github_actions, github_actions_marker
@@ -54,43 +59,6 @@ class ComparisonItem:
         #  raise RuntimeError("Shouldn't happen")
 
     def ensure_plots(self, report_dir: Path, plot_dir: Path):
-        #  for check in self.checks:
-        #  check.ensure_plot(self.key, report_dir, plot_dir)
-
-        #  print("MAKE PLOT")
-        #  print(type(self.item_a))
-        #  print(isinstance(self.item_a, ROOT.TH1), isinstance(self.item_a, ROOT.TH2))
-
-        def do_plot(item_a, item_b, out):
-            c = ROOT.TCanvas("c1")
-            item_a.SetLineColor(ROOT.kBlue)
-            item_a.Draw()
-            item_b.SetLineColor(ROOT.kRed)
-            item_b.Draw("same")
-
-            if isinstance(item_a, ROOT.TEfficiency):
-                ha = item_a.CreateGraph().GetHistogram()
-                hb = item_b.CreateGraph().GetHistogram()
-                maximum = max(ha.GetMaximum(), hb.GetMaximum())
-                minimum = max(ha.GetMinimum(), hb.GetMinimum())
-                ROOT.gPad.Update()
-                graph = item_a.GetPaintedGraph()
-                graph.SetMinimum(minimum)
-                graph.SetMaximum(maximum)
-            else:
-                maximum = max(item_a.GetMaximum(), item_b.GetMaximum())
-                minimum = max(item_a.GetMinimum(), item_b.GetMinimum())
-                item_a.GetYaxis().SetRangeUser(
-                    minimum, minimum + (maximum - minimum) * 1.2
-                )
-
-            legend = ROOT.TLegend(0.1, 0.8, 0.9, 0.9)
-            legend.SetNColumns(2)
-            #  legend.SetHeader("The Legend Title","C"
-            legend.AddEntry(item_a, "reference")
-            legend.AddEntry(item_b, "current")
-            legend.Draw()
-            c.SaveAs(out)
 
         if isinstance(self.item_a, ROOT.TH2):
             h2_a = convert_hist(self.item_a)
@@ -104,46 +72,25 @@ class ComparisonItem:
                 #  fig.savefig(f"{self.key}_p{proj}.png")
                 self._generic_plots.append(plot_to_uri(fig))
 
-            #  for proj in "ProjectionX", "ProjectionY":
-            #  p = plot_dir / f"{self.key}_overlay_{proj}.png"
-            #  if p.exists():
-            #  continue
-            #  item_a = getattr(self.item_a, proj)().Clone()
-            #  item_b = getattr(self.item_b, proj)().Clone()
-            #  item_a.SetDirectory(0)
-            #  item_b.SetDirectory(0)
-            #  do_plot(
-            #  item_a,
-            #  item_b,
-            #  str(report_dir / p),
-            #  )
-            #  self._generic_plots.append(p)
         elif isinstance(self.item_a, ROOT.TEfficiency):
-            a = convert_hist(self.item_a)
-            b = convert_hist(self.item_b)
+            a, a_err = convert_hist(self.item_a)
+            b, b_err = convert_hist(self.item_b)
 
-            # find lowest non-zero entry
-            #  print(a.values()[a.values() > 0])
-            #  print(b.values()[b.values() > 0])
+            #  a = convert_hist(tefficiency_to_th1(self.item_a))
+            #  b = convert_hist(tefficiency_to_th1(self.item_b))
+
             lowest = 0
             nonzero = numpy.concatenate(
                 [a.values()[a.values() > 0], b.values()[b.values() > 0]]
             )
             if len(nonzero) > 0:
                 lowest = numpy.min(nonzero)
-            #  print(lowest)
 
-            fig, (ax, rax) = plot_ratio(a, b)
+            fig, (ax, rax) = plot_ratio_eff(a, a_err, b, b_err)
+            #  fig, (ax, rax) = plot_ratio(a, b)
             ax.set_ylim(bottom=lowest * 0.9)
 
-            #  fig.savefig(f"{self.key}.png")
             self._generic_plots.append(plot_to_uri(fig))
-
-            #  p = plot_dir / f"{self.key}_overlay.png"
-            #  if not (report_dir / p).exists():
-            #  do_plot(self.item_a, self.item_b, str(report_dir / p))
-
-            #  self._generic_plots.append(p)
 
         elif isinstance(self.item_a, ROOT.TH1):
             a = convert_hist(self.item_a)

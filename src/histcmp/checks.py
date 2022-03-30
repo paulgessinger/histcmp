@@ -18,6 +18,7 @@ from histcmp.root_helpers import (
     get_bin_content_error,
     push_root_level,
     convert_hist,
+    tefficiency_to_th1,
 )
 
 
@@ -34,7 +35,7 @@ class Status(Enum):
         elif self == Status.INCONCLUSIVE:
             return icons.inconclusive
         #  elif self == Status.DISABLED:
-            #  return icons.disabled
+        #  return icons.disabled
         else:
             return icons.failure
 
@@ -69,7 +70,7 @@ class CompatCheck(ABC):
         self.suffix = suffix
 
     @property
-    def is_disabled(self) -> bool: 
+    def is_disabled(self) -> bool:
         return self.disabled
 
     @abstractproperty
@@ -116,18 +117,18 @@ class CompatCheck(ABC):
         raise NotImplementedError()
 
     def __str__(self) -> str:
-        return self.name + (" "+self.suffix if self.suffix is not None else "")
+        return self.name + (" " + self.suffix if self.suffix is not None else "")
 
 
 class CompositeCheck(CompatCheck):
-    def __init__(self, *args:List[CompatCheck], **kwargs):
+    def __init__(self, *args: List[CompatCheck], **kwargs):
         super().__init__(**kwargs)
         self.checks = args
 
         self.disabled = any(c.is_disabled for c in self.checks)
 
     @property
-    def is_applicable(self)->bool:
+    def is_applicable(self) -> bool:
         return all(c.is_applicable for c in self.checks)
 
     @property
@@ -139,8 +140,9 @@ class CompositeCheck(CompatCheck):
         return " --- ".join(c.label for c in self.checks)
 
     @property
-    def name(self)-> str:
+    def name(self) -> str:
         return " + ".join(str(c) for c in self.checks)
+
 
 class ScoreThresholdCheck(CompatCheck):
     def __init__(self, threshold: float, op, **kwargs):
@@ -192,17 +194,9 @@ class KolmogorovTest(ScoreThresholdCheck):
     def is_applicable(self) -> bool:
         with push_root_level(ROOT.kError):
             if isinstance(self.item_a, ROOT.TEfficiency):
-                passed = self.item_a.GetPassedHistogram()
-                total = self.item_a.GetTotalHistogram()
-                self.item_a = passed.Clone()
-                self.item_a.SetDirectory(0)
-                self.item_a.Divide(total)
+                self.item_a = tefficiency_to_th1(self.item_a)
+                self.item_b = tefficiency_to_th1(self.item_b)
 
-                passed = self.item_b.GetPassedHistogram()
-                total = self.item_b.GetTotalHistogram()
-                self.item_b = passed.Clone()
-                self.item_b.SetDirectory(0)
-                self.item_b.Divide(total)
         int_a, _ = integralAndError(self.item_a)
         int_b, _ = integralAndError(self.item_b)
         return int_a != 0 and int_b != 0
@@ -220,17 +214,8 @@ class Chi2Test(ScoreThresholdCheck):
 
         if isinstance(self.item_a, ROOT.TEfficiency):
             with push_root_level(ROOT.kError):
-                passed = self.item_a.GetPassedHistogram()
-                total = self.item_a.GetTotalHistogram()
-                self.item_a = passed.Clone()
-                self.item_a.SetDirectory(0)
-                self.item_a.Divide(total)
-
-                passed = self.item_b.GetPassedHistogram()
-                total = self.item_b.GetTotalHistogram()
-                self.item_b = passed.Clone()
-                self.item_b.SetDirectory(0)
-                self.item_b.Divide(total)
+                self.item_a = tefficiency_to_th1(self.item_a)
+                self.item_b = tefficiency_to_th1(self.item_b)
 
         super().__init__(threshold=threshold, op=operator.gt, **kwargs)
 
@@ -238,21 +223,7 @@ class Chi2Test(ScoreThresholdCheck):
     def _result_v(self):
         opt = "P"
         with push_root_level(ROOT.kWarning):
-
             self._result_v = chi2result(*ROOT.MyChi2Test(self.item_a, self.item_b, opt))
-            #  print(self._result_v)
-            #  nbins = self.item_a.GetXaxis().GetNbins() - 2
-            #  arr = self._result_v.res
-            #  arr.reshape((nbins,))
-            #  v = numpy.frombuffer(arr, dtype=numpy.float64, count=nbins)
-            #  print(v)
-            #  print(self._result_v.res)
-
-            #  prob = self.item_a.Chi2TestX(
-            #  self.item_b, chi2, ndf, igood, opt, ctypes.pointer(res)
-            #  )
-
-            #  return self.item_a.Chi2Test(self.item_b, opt)
 
         return self._result_v
 
@@ -269,27 +240,11 @@ class Chi2Test(ScoreThresholdCheck):
             return False
 
         res = self._result_v
-        #  if res.igood != 0:
-        #  return False
         if res.ndf == -1:
             return False
 
-        #  if res.igood != 0 and res.prob == 0.0: return False
-        if res.prob == 0.0: return False
-
-        #  sumw2 = numpy.array(
-        #  [
-        #  self.item_a.GetSumw2().At(b)
-        #  for b in range(1, self.item_a.GetXaxis().GetNbins())
-        #  ]
-        #  )
-        #  print(
-        #  numpy.sum(numpy.sqrt(sumw2)),
-        #  self.item_a.GetSumOfWeights(),
-        #  )
-
-        #  print(get_bin_content(self.item_a))
-        #  print(get_bin_content(self.item_b))
+        if res.prob == 0.0:
+            return False
 
         return True
 
@@ -313,22 +268,16 @@ class IntegralCheck(ScoreThresholdCheck):
         if isinstance(item_a, ROOT.TEfficiency):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", RuntimeWarning)
-                passed = item_a.GetPassedHistogram()
-                total = item_a.GetTotalHistogram()
-                item_a = passed.Clone()
-                item_a.SetDirectory(0)
-                item_a.Divide(total)
+                item_a = tefficiency_to_th1(item_a)
+                item_b = tefficiency_to_th1(item_b)
 
-                passed = item_b.GetPassedHistogram()
-                total = item_b.GetTotalHistogram()
-                item_b = passed.Clone()
-                item_b.SetDirectory(0)
-                item_b.Divide(total)
         self.int_a, self.err_a = integralAndError(item_a)
         self.int_b, self.err_b = integralAndError(item_b)
 
         if self.err_a > 0.0:
-            self.sigma = numpy.abs(self.int_a - self.int_b) / self.err_a
+            self.sigma = numpy.abs(self.int_a - self.int_b) / numpy.sqrt(
+                self.err_a ** 2 + self.err_b ** 2
+            )
 
     @property
     def score(self) -> float:
@@ -337,7 +286,7 @@ class IntegralCheck(ScoreThresholdCheck):
     @property
     def label(self) -> str:
         cmp = "<" if self.is_valid else ">="
-        return f"Intregal: {self.int_a}+-{self.err_a:} vs. {self.int_b}+-{self.err_b}: (int_a - int_b) / sigma(int_a) = {self.sigma:.2f} {cmp} {self.threshold}"
+        return f"Intregal: {self.int_a}+-{self.err_a:} vs. {self.int_b}+-{self.err_b}: (int_a - int_b) / sqrt(sigma(int_a)^2 + sigma(int_b)^2) = {self.sigma:.2f} {cmp} {self.threshold}"
 
     @functools.cached_property
     def is_applicable(self) -> bool:
@@ -350,10 +299,9 @@ class IntegralCheck(ScoreThresholdCheck):
 
 class RatioCheck(CompatCheck):
     def __init__(self, item_a, item_b, threshold: float = 3, **kwargs):
-        #  self.val_a, self.err_a = get_bin_content_error(item_a)
-        #  self.val_b, self.err_b = get_bin_content_error(item_b)
-        #  self.ratio = self.val_a / self.val_b
         self.ratio = None
+        self.ratio_err = None
+        self.ratio_pull = None
         self.threshold = threshold
 
         super().__init__(**kwargs)
@@ -361,76 +309,60 @@ class RatioCheck(CompatCheck):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", RuntimeWarning)
             if isinstance(item_a, ROOT.TEfficiency):
-                    passed = item_a.GetPassedHistogram()
-                    total = item_a.GetTotalHistogram()
-                    item_a = passed.Clone()
-                    item_a.SetDirectory(0)
-                    item_a.Divide(total)
+                a, a_err = convert_hist(item_a)
+                b, b_err = convert_hist(item_b)
+                ratio = a.values() / b.values()
 
-                    passed = item_b.GetPassedHistogram()
-                    total = item_b.GetTotalHistogram()
-                    item_b = passed.Clone()
-                    item_b.SetDirectory(0)
-                    item_b.Divide(total)
+                a_err = 0.5 * (a_err[0] + a_err[1])
+                b_err = 0.5 * (b_err[0] + b_err[1])
 
-            elif isinstance(item_a, ROOT.TProfile):
-                item_a = item_a.ProjectionX()
-                item_b = item_b.ProjectionX()
+                self.ratio_err = numpy.sqrt(
+                    (a_err / b.values()) ** 2
+                    + (a.values() / b.values() ** 2 * b_err) ** 2
+                )
 
-            try:
-                ratio = item_a.Clone()
-                ratio.SetDirectory(0)
-                ratio.Divide(item_b)
+                self.ratio = a.values() / b.values()
                 self.applicable = True
-                self.ratio = ratio
-            except Exception:
-                self.applicable = False
 
-    def make_plot(self, output: Path) -> bool:
-        if not self.applicable:
-            return False
-        c = ROOT.TCanvas("c1", "c1")
+            else:
+                if isinstance(item_a, ROOT.TProfile):
+                    item_a = item_a.ProjectionX()
+                    item_b = item_b.ProjectionX()
 
-        opt = ""
-        if isinstance(self.ratio, ROOT.TH2):
-            opt = "colz"
-        self.ratio.Draw(opt)
-        self.ratio.GetYaxis().SetTitle("reference / current")
-        self.ratio.GetYaxis().SetRangeUser(0.5, 2)
-        c.SaveAs(str(output))
-        return True
+                try:
+                    ratio = item_a.Clone()
+                    ratio.SetDirectory(0)
+                    ratio.Divide(item_b)
+                    self.ratio, self.ratio_err = get_bin_content_error(ratio)
+                    self.applicable = True
+                except Exception:
+                    self.applicable = False
+
+            if self.applicable:
+                ratio, err = self.ratio, self.ratio_err
+                m = (ratio != 0.0) & (~numpy.isnan(ratio)) & (err != 0.0)
+                ratio[m] = ratio[m] - 1
+                self.ratio_pull = ratio[m] / err[m]
 
     @functools.cached_property
     def is_applicable(self) -> bool:
-        nbins = len(self._ratio())
-        if nbins == 0: return False
+        if self.ratio_pull is not None:
+            nbins = len(self.ratio_pull)
+            if nbins == 0:
+                return False
         return self.applicable and self.ratio is not None
-
-    @functools.lru_cache(1)
-    def _ratio(self):
-        if self.ratio is None:
-            return []
-        ratio, err = get_bin_content_error(self.ratio)
-        #  print(ratio, err)
-        m = ratio != 0.0
-        ratio[m] = ratio[m] - 1
-
-        me = err != 0.0
-
-        return ratio[m & me] / err[m & me]
 
     @property
     def is_valid(self) -> bool:
-        #  print("ratio:", self._ratio())
-        nabove = numpy.sum(numpy.abs(self._ratio()) >= self.threshold)
-        nbins = len(self._ratio())
-        
+        nabove = numpy.sum(numpy.abs(self.ratio_pull) >= self.threshold)
+        nbins = len(self.ratio_pull)
+
         return nabove < numpy.sqrt(nbins)
 
     @property
     def label(self) -> str:
-        n = numpy.sum(numpy.abs(self._ratio()) >= self.threshold)
-        nbins = len(self._ratio())
+        n = numpy.sum(numpy.abs(self.ratio_pull) >= self.threshold)
+        nbins = len(self.ratio_pull)
         return f"(a/b - 1) / sigma(a/b) > {self.threshold} for {n}/{nbins} bins, cf. {numpy.sqrt(nbins)}"
 
     @property
@@ -439,7 +371,7 @@ class RatioCheck(CompatCheck):
 
 
 class ResidualCheck(CompatCheck):
-    def __init__(self, item_a, item_b, threshold=3, **kwargs):
+    def __init__(self, item_a, item_b, threshold=1, **kwargs):
         self.threshold = threshold
         self.item_a = item_a
         self.item_b = item_b
@@ -450,17 +382,9 @@ class ResidualCheck(CompatCheck):
             warnings.simplefilter("ignore", RuntimeWarning)
             if isinstance(self.item_a, ROOT.TEfficiency):
                 with push_root_level(ROOT.kError):
-                    passed = self.item_a.GetPassedHistogram()
-                    total = self.item_a.GetTotalHistogram()
-                    self.item_a = passed.Clone()
-                    self.item_a.SetDirectory(0)
-                    self.item_a.Divide(total)
+                    self.item_a = tefficiency_to_th1(self.item_a)
+                    self.item_b = tefficiency_to_th1(self.item_b)
 
-                    passed = self.item_b.GetPassedHistogram()
-                    total = self.item_b.GetTotalHistogram()
-                    self.item_b = passed.Clone()
-                    self.item_b.SetDirectory(0)
-                    self.item_b.Divide(total)
             if isinstance(self.item_a, ROOT.TProfile):
                 self.item_a = self.item_a.ProjectionX()
                 self.item_b = self.item_b.ProjectionX()
@@ -476,12 +400,16 @@ class ResidualCheck(CompatCheck):
 
     def is_applicable(self) -> bool:
         val, err, pull = self._pulls
-        if numpy.sum(~numpy.isnan(pull)) == 0: return False
+        if numpy.sum(~numpy.isnan(pull)) == 0:
+            return False
         return self.applicable
 
     @functools.cached_property
     def _pulls(self):
-        val, err = get_bin_content_error(self.residual)
+        val, _ = get_bin_content_error(self.residual)
+        _, err_a = get_bin_content_error(self.item_a)
+        _, err_b = get_bin_content_error(self.item_b)
+        err = numpy.sqrt(err_a ** 2 + err_b ** 2)
         m = err > 0
         pull = numpy.zeros_like(val)
         pull[m] = numpy.abs(val[m]) / err[m]
@@ -490,7 +418,7 @@ class ResidualCheck(CompatCheck):
     @functools.cached_property
     def is_valid(self) -> bool:
         val, err, pull = self._pulls
-        nabove= numpy.sum(pull[~numpy.isnan(pull)] >= self.threshold)
+        nabove = numpy.sum(pull[~numpy.isnan(pull)] >= self.threshold)
         return nabove < numpy.sqrt(len(val))
 
     @functools.cached_property
@@ -499,7 +427,9 @@ class ResidualCheck(CompatCheck):
         count = numpy.sum(pull[~numpy.isnan(pull)] >= self.threshold)
         pe = numpy.sqrt(len(val))
         if self.is_valid:
-            return f"pull < {self.threshold} in {len(val)-count}/{len(val)} bins, cf. {pe}"
+            return (
+                f"pull < {self.threshold} in {len(val)-count}/{len(val)} bins, cf. {pe}"
+            )
         else:
             return f"pull > {self.threshold} in {count}/{len(val)} bins, cf. {pe}"
 

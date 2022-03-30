@@ -5,6 +5,7 @@ import urllib.parse
 #  from abc import ABC, abstractmethod, abstractproperty
 #  from pathlib import Path
 import numpy
+import mplhep
 
 import hist
 from matplotlib import pyplot
@@ -33,6 +34,54 @@ pyplot.rcParams.update(
 #  return f'<img src="{self.path}"/>'
 
 
+def plot_ratio_eff(a, a_err, b, b_err):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        fig, (ax, rax) = pyplot.subplots(
+            2, 1, gridspec_kw=dict(height_ratios=[2, 0.5], hspace=0.05)
+        )
+
+        mplhep.histplot(a.values(), a.axes[0].edges, yerr=a_err, ax=ax)
+        mplhep.histplot(b.values(), b.axes[0].edges, yerr=b_err, ax=ax)
+
+        ratio = a.values() / b.values()
+
+        a_err = 0.5 * (a_err[0] + a_err[1])
+        b_err = 0.5 * (b_err[0] + b_err[1])
+
+        r_err = numpy.sqrt(
+            (a_err / b.values()) ** 2 + (a.values() / b.values() ** 2 * b_err) ** 2
+        )
+
+        rax.axhline(1, ls="--", color="black")
+        rax.errorbar(
+            b.axes[0].centers,
+            ratio,
+            yerr=r_err,
+            marker="o",
+            markersize=2,
+            ls="none",
+            color="black",
+        )
+
+    ax.set_ylabel(a.label)
+
+    ax.set_xlabel("")
+    rax.set_xlabel(a.axes[0].name)
+    ax.set_xticklabels([])
+
+    rax.set_xlim(*ax.get_xlim())
+    ax.set_ylim(top=1.025)
+
+    ax.set_title(a.name)
+    ax.set_title(a.name)
+    fig.align_ylabels()
+    #  fig.tight_layout()
+    fig.subplots_adjust(left=0.12, right=0.95, top=0.9, bottom=0.1)
+
+    return fig, (ax, rax)
+
+
 def plot_ratio(a: hist.Hist, b: hist.Hist):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -56,6 +105,9 @@ def plot_ratio(a: hist.Hist, b: hist.Hist):
             ymin -= yrange * 0.2
             ymax += yrange * 0.2
 
+            #  ymin = 0.1
+            #  ymax = 3
+
             #  print(ymin, ymax)
             main_ax_artists, subplot_ax_artists = a.plot_ratio(
                 b,
@@ -64,6 +116,7 @@ def plot_ratio(a: hist.Hist, b: hist.Hist):
                 rp_num_label="monitored",
                 rp_denom_label="reference",
                 rp_uncert_draw_type="line",  # line or bar
+                rp_uncertainty_type="poisson",
                 rp_ylim=(ymin, ymax),
             )
             markers, _, _ = subplot_ax_artists.errorbar.lines

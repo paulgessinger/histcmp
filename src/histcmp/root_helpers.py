@@ -129,15 +129,21 @@ def convert_hist(item):
 
         nbins = item.GetPassedHistogram().GetNbinsX()
         values = numpy.zeros(nbins)
-        error = numpy.zeros(nbins)
+        error = numpy.zeros((2, nbins))
         for b in range(1, nbins + 1):
             values[b - 1] = item.GetEfficiency(b)
-            error[b - 1] = 0.5 * (
-                item.GetEfficiencyErrorUp(b) + item.GetEfficiencyErrorLow(b)
-            )
+            #  error[b - 1] = 0.5 * (
+            #  item.GetEfficiencyErrorUp(b) + item.GetEfficiencyErrorLow(b)
+            #  )
 
+            if values[b - 1] != 0:
+                error[1][b - 1] = item.GetEfficiencyErrorUp(b)
+                error[0][b - 1] = item.GetEfficiencyErrorLow(b)
+
+        #  print(values)
+        #  print(error)
         eff.view().value = values
-        eff.view().variance = error ** 2
+        eff.view().variance = ((error[0] + error[1]) / 2) ** 2
 
         #  print(eff.name)
         #  print(values)
@@ -155,7 +161,7 @@ def convert_hist(item):
         #  hi = hi - v
         #  eff.view().variance = (lo + hi) / 2.0 ** 2  # - eff.view().value  # ** 2
 
-        return eff
+        return eff, error
 
     elif isinstance(item, ROOT.TH1):
         h = hist.Hist(
@@ -168,3 +174,16 @@ def convert_hist(item):
         h.view().value = cont
         h.view().variance = err ** 2
         return h
+
+
+def tefficiency_to_th1(eff):
+    out = eff.GetPassedHistogram().Clone()
+    out.SetDirectory(0)
+    out.Reset()
+
+    for b in range(1, out.GetXaxis().GetNbins()):
+        out.SetBinContent(b, eff.GetEfficiency(b))
+        err = 0.5 * (eff.GetEfficiencyErrorLow(b) + eff.GetEfficiencyErrorUp(b))
+        out.SetBinError(b, err)
+
+    return out
