@@ -41,8 +41,12 @@ def plot_ratio_eff(a, a_err, b, b_err):
             2, 1, gridspec_kw=dict(height_ratios=[2, 0.5], hspace=0.05)
         )
 
-        mplhep.histplot(a.values(), a.axes[0].edges, yerr=a_err, ax=ax)
-        mplhep.histplot(b.values(), b.axes[0].edges, yerr=b_err, ax=ax)
+        mplhep.histplot(
+            a.values(), a.axes[0].edges, yerr=a_err, ax=ax, label="monitored"
+        )
+        mplhep.histplot(
+            b.values(), b.axes[0].edges, yerr=b_err, ax=ax, label="reference"
+        )
 
         ratio = a.values() / b.values()
 
@@ -75,6 +79,7 @@ def plot_ratio_eff(a, a_err, b, b_err):
 
     ax.set_title(a.name)
     ax.set_title(a.name)
+    ax.legend()
     fig.align_ylabels()
     #  fig.tight_layout()
     fig.subplots_adjust(left=0.12, right=0.95, top=0.9, bottom=0.1)
