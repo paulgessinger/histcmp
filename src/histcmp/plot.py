@@ -82,7 +82,7 @@ def plot_ratio_eff(a, a_err, b, b_err):
     ax.legend()
     fig.align_ylabels()
     #  fig.tight_layout()
-    fig.subplots_adjust(left=0.12, right=0.95, top=0.9, bottom=0.1)
+    fig.subplots_adjust(left=0.14, right=0.95, top=0.9, bottom=0.1)
 
     return fig, (ax, rax)
 
@@ -143,7 +143,7 @@ def plot_ratio(a: hist.Hist, b: hist.Hist):
     ax.set_title(a.name)
     fig.align_ylabels()
     #  fig.tight_layout()
-    fig.subplots_adjust(left=0.12, right=0.95, top=0.9, bottom=0.1)
+    fig.subplots_adjust(left=0.14, right=0.95, top=0.9, bottom=0.1)
 
     return fig, (ax, rax)
 

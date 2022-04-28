@@ -30,6 +30,7 @@ def main(
     monitored: Path = typer.Argument(..., exists=True, dir_okay=False),
     reference: Path = typer.Argument(..., exists=True, dir_okay=False),
     output: Optional[Path] = typer.Option(None, "-o", "--output", dir_okay=False),
+    plots: Optional[Path] = typer.Option(None, "-p", "--plots", file_okay=False),
     label_monitored: Optional[str] = None,
     label_reference: Optional[str] = None,
     title: str = "Histogram comparison",
@@ -164,7 +165,9 @@ def main(
         )
 
         if output is not None:
-            make_report(comparison, output)
+            if plots is not None:
+                plots.mkdir(exist_ok=True, parents=True)
+            make_report(comparison, output, plots)
 
         if status != Status.SUCCESS:
             raise typer.Exit(1)

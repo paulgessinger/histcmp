@@ -69,15 +69,10 @@ class ComparisonItem:
                 h1_b = h2_b.project(proj)
 
                 fig, _ = plot_ratio(h1_a, h1_b)
-                #  fig.savefig(f"{self.key}_p{proj}.png")
-                self._generic_plots.append(plot_to_uri(fig))
 
         elif isinstance(self.item_a, ROOT.TEfficiency):
             a, a_err = convert_hist(self.item_a)
             b, b_err = convert_hist(self.item_b)
-
-            #  a = convert_hist(tefficiency_to_th1(self.item_a))
-            #  b = convert_hist(tefficiency_to_th1(self.item_b))
 
             lowest = 0
             nonzero = numpy.concatenate(
@@ -87,17 +82,16 @@ class ComparisonItem:
                 lowest = numpy.min(nonzero)
 
             fig, (ax, rax) = plot_ratio_eff(a, a_err, b, b_err)
-            #  fig, (ax, rax) = plot_ratio(a, b)
             ax.set_ylim(bottom=lowest * 0.9)
-
-            self._generic_plots.append(plot_to_uri(fig))
 
         elif isinstance(self.item_a, ROOT.TH1):
             a = convert_hist(self.item_a)
             b = convert_hist(self.item_b)
             fig, _ = plot_ratio(a, b)
-            #  fig.savefig(f"{self.key}.png")
-            self._generic_plots.append(plot_to_uri(fig))
+
+        self._generic_plots.append(plot_to_uri(fig))
+        if plot_dir is not None:
+            fig.savefig(plot_dir / f"{self.key}.pdf")
 
     @property
     def first_plot_index(self):

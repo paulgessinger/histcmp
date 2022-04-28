@@ -1,7 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 import shutil
-from typing import Union
+from typing import Union, Optional
 import contextlib
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import re
@@ -138,14 +138,11 @@ def copy_static(output: Path) -> None:
     shutil.copytree(static, dest)
 
 
-def make_report(comparison: Comparison, output: Path):
+def make_report(comparison: Comparison, output: Path, plot_dir: Optional[Path] = None):
 
     #  copy_static(output)
 
     env = make_environment()
-
-    plot_dir = Path("plots")
-    #  (output / plot_dir).mkdir(exist_ok=True)
 
     import ROOT
 
