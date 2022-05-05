@@ -134,14 +134,15 @@ def compare(config: Config, a: Path, b: Path) -> Comparison:
     keys_a = {k.GetName() for k in rf_a.GetListOfKeys()}
     keys_b = {k.GetName() for k in rf_b.GetListOfKeys()}
 
+    key_map_a = {k.GetName(): k for k in rf_a.GetListOfKeys()}
+    key_map_b = {k.GetName(): k for k in rf_b.GetListOfKeys()}
     common = keys_a.intersection(keys_b)
 
     result = Comparison(file_a=str(a), file_b=str(b))
 
     for key in track(sorted(common), console=console, description="Comparing..."):
-
-        item_a = rf_a.Get(key)
-        item_b = rf_b.Get(key)
+        item_a = key_map_a[key].ReadObj()
+        item_b = key_map_b[key].ReadObj()
 
         item_a.SetDirectory(0)
         item_b.SetDirectory(0)
