@@ -197,9 +197,16 @@ class KolmogorovTest(ScoreThresholdCheck):
                 self.item_a = tefficiency_to_th1(self.item_a)
                 self.item_b = tefficiency_to_th1(self.item_b)
 
-        int_a, _ = integralAndError(self.item_a)
-        int_b, _ = integralAndError(self.item_b)
-        return int_a != 0 and int_b != 0
+        int_a, err_a = integralAndError(self.item_a)
+        int_b, err_b = integralAndError(self.item_b)
+        values = numpy.array([int_a, int_b, err_a, err_b])
+        if numpy.any(numpy.isnan(values)) or numpy.any(values==0):
+            return False
+
+        if self.score == 0.0:
+            return False
+
+        return True
 
     @property
     def name(self) -> str:
@@ -243,7 +250,13 @@ class Chi2Test(ScoreThresholdCheck):
         if res.ndf == -1:
             return False
 
-        if res.prob == 0.0:
+        if numpy.isnan(res.chi2):
+            return False
+
+        if res.prob == 0.0 or numpy.isnan(res.prob):
+            return False
+
+        if res.igood != 0:
             return False
 
         return True
