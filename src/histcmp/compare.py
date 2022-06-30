@@ -172,11 +172,11 @@ def compare(config: Config, a: Path, b: Path) -> Comparison:
 
             for cname, check_kw in checks.items():
                 ctype = getattr(histcmp.checks, cname)
-                if ctype not in configured_checks:
-                    #  print("Adding", cname, "kw:", check_kw)
-                    configured_checks[ctype] = (
-                        {} if check_kw is None else check_kw.copy()
-                    )
+                if ctype not in configured_checks: 
+                    if check_kw is not None:
+                        configured_checks[ctype] = (
+                            {} if check_kw is None else check_kw.copy()
+                        )
                 else:
                     #  print("Modifying", cname)
                     if check_kw is None:
