@@ -91,7 +91,8 @@ class ComparisonItem:
 
         self._generic_plots.append(plot_to_uri(fig))
         if plot_dir is not None:
-            fig.savefig(plot_dir / f"{self.key}.pdf")
+            safe_key = self.key.replace("/", "_")
+            fig.savefig(plot_dir / f"{safe_key}.pdf")
 
     @property
     def first_plot_index(self):
@@ -172,11 +173,9 @@ def compare(config: Config, a: Path, b: Path) -> Comparison:
 
             for cname, check_kw in checks.items():
                 ctype = getattr(histcmp.checks, cname)
-                if ctype not in configured_checks: 
+                if ctype not in configured_checks:
                     if check_kw is not None:
-                        configured_checks[ctype] = (
-                            {} if check_kw is None else check_kw.copy()
-                        )
+                        configured_checks[ctype] = check_kw.copy()
                 else:
                     #  print("Modifying", cname)
                     if check_kw is None:

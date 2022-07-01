@@ -55,14 +55,11 @@ def main(
         config = Config(
             checks={
                 "*": {
-                    k: None
-                    for k in [
-                        "Chi2Test",
-                        "KolmogorovTest",
-                        "RatioCheck",
-                        "ResidualCheck",
-                        "IntegralCheck",
-                    ]
+                    "Chi2Test": {"threshold": 0.01},
+                    "KolmogorovTest": {"threshold": 0.68},
+                    "RatioCheck": {"threshold": 3},
+                    "ResidualCheck": {"threshold": 1},
+                    "IntegralCheck": {"threshold": 3},
                 }
             }
         )
