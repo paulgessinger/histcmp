@@ -47,9 +47,6 @@ auto MyChi2Test(const TH1* a, const TH1* b, Option_t* option){
    Int_t ndf = 0, igood = 0;
    Double_t* res = 0;
 
-   TString opt = option;
-   opt.ToUpper();
-
    Double_t prob = a->Chi2TestX(b,chi2,ndf,igood,option,res);
 
    return std::make_tuple(prob, chi2, ndf, igood, res);
@@ -228,9 +225,8 @@ class Chi2Test(ScoreThresholdCheck):
 
     @functools.cached_property
     def _result_v(self):
-        opt = "P"
         with push_root_level(ROOT.kWarning):
-            self._result_v = chi2result(*ROOT.MyChi2Test(self.item_a, self.item_b, opt))
+            self._result_v = chi2result(*ROOT.MyChi2Test(self.item_a, self.item_b, "UUOFUF"))
 
         return self._result_v
 
