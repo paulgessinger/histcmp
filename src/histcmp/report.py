@@ -138,7 +138,11 @@ def copy_static(output: Path) -> None:
     shutil.copytree(static, dest)
 
 
-def make_report(comparison: Comparison, output: Path, plot_dir: Optional[Path] = None):
+def make_report(
+    comparison: Comparison,
+    output: Path,
+    plot_dir: Optional[Path] = None,
+):
 
     #  copy_static(output)
 
@@ -150,7 +154,9 @@ def make_report(comparison: Comparison, output: Path, plot_dir: Optional[Path] =
         for item in track(
             comparison.items, description="Making plots", console=console
         ):
-            p = item.ensure_plots(output, plot_dir)
+            p = item.ensure_plots(
+                output, plot_dir, comparison.label_monitored, comparison.label_reference
+            )
             if p is not None:
                 console.print(p)
 

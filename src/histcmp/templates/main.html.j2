@@ -10,8 +10,8 @@
 
     <div class="container plot-container">
     {% for item in comparison.items %}
-    <div class="column is-one-third plot">
-    <div class="box">
+    <div class="column is-one-third plot" x-data="{shown: false}" x-intersect="shown = true">
+    <div class="box" x-show="shown">
         <div class="block">
         <h2 class="title {% if item.status == Status.FAILURE -%}
         has-text-danger

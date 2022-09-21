@@ -34,6 +34,7 @@ def main(
     label_monitored: Optional[str] = None,
     label_reference: Optional[str] = None,
     title: str = "Histogram comparison",
+    _filter: str = typer.Option(".*", "-f", "--filter"),
 ):
     try:
         import ROOT
@@ -70,7 +71,7 @@ def main(
     console.print(Panel(Pretty(config), title="Configuration"))
 
     try:
-        comparison = compare(config, monitored, reference)
+        comparison = compare(config, monitored, reference, _filter=_filter)
 
         comparison.label_monitored = label_monitored
         comparison.label_reference = label_reference

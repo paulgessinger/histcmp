@@ -3,12 +3,15 @@ from typing import Tuple, List, Any, Optional
 import functools
 from dataclasses import dataclass, field
 import fnmatch
+import re
 
+import rich
 from rich.progress import track
 from rich.text import Text
 from rich.panel import Panel
 from matplotlib import pyplot
 import numpy
+import mplhep.atlas
 
 from histcmp.console import console, fail, info, good, warn
 from histcmp.root_helpers import (
@@ -58,7 +61,9 @@ class ComparisonItem:
         return Status.INCONCLUSIVE
         #  raise RuntimeError("Shouldn't happen")
 
-    def ensure_plots(self, report_dir: Path, plot_dir: Path):
+    def ensure_plots(
+        self, report_dir: Path, plot_dir: Path, label_a: str, label_b: str
+    ):
 
         if isinstance(self.item_a, ROOT.TH2):
             h2_a = convert_hist(self.item_a)
@@ -68,31 +73,43 @@ class ComparisonItem:
                 h1_a = h2_a.project(proj)
                 h1_b = h2_b.project(proj)
 
-                fig, _ = plot_ratio(h1_a, h1_b)
+                fig, (ax, rax) = plot_ratio(h1_a, h1_b, label_a, label_b)
+                #  mplhep.atlas.text("Simulation Internal", ax=ax, loc=1)
 
         elif isinstance(self.item_a, ROOT.TEfficiency):
             a, a_err = convert_hist(self.item_a)
             b, b_err = convert_hist(self.item_b)
 
             lowest = 0
+            largest = 1.015
             nonzero = numpy.concatenate(
                 [a.values()[a.values() > 0], b.values()[b.values() > 0]]
             )
             if len(nonzero) > 0:
                 lowest = numpy.min(nonzero)
+                largest = numpy.max(nonzero)
 
-            fig, (ax, rax) = plot_ratio_eff(a, a_err, b, b_err)
-            ax.set_ylim(bottom=lowest * 0.9)
+            fig, (ax, rax) = plot_ratio_eff(a, a_err, b, b_err, label_a, label_b)
+            ax.set_ylim(
+                bottom=lowest * 0.99,
+                top=largest * 1.008,
+            )
+            #  mplhep.atlas.text("Simulation Internal", ax=ax, loc=1)
 
         elif isinstance(self.item_a, ROOT.TH1):
             a = convert_hist(self.item_a)
             b = convert_hist(self.item_b)
-            fig, _ = plot_ratio(a, b)
+            fig, (ax, rax) = plot_ratio(a, b, label_a, label_b)
 
-        self._generic_plots.append(plot_to_uri(fig))
-        if plot_dir is not None:
-            safe_key = self.key.replace("/", "_")
-            fig.savefig(plot_dir / f"{safe_key}.pdf")
+            #  mplhep.atlas.text("Simulation Internal", ax=ax, loc=1)
+
+        try:
+            self._generic_plots.append(plot_to_uri(fig))
+            if plot_dir is not None:
+                safe_key = self.key.replace("/", "_")
+                fig.savefig(plot_dir / f"{safe_key}.pdf")
+        except ValueError as e:
+            rich.print(f"ERROR during plot: {e}")
 
     @property
     def first_plot_index(self):
@@ -123,30 +140,70 @@ class Comparison:
 
 
 def can_handle_item(item) -> bool:
-    return isinstance(item, ROOT.TH1) or isinstance(
-        item, ROOT.TEfficiency
-    )  # and not isinstance(item, ROOT.TH2)
+    if isinstance(item, ROOT.TH1):
+        return True
+    if isinstance(item, ROOT.TEfficiency):
+        return item.GetDimension() == 1
+    return False
 
 
-def compare(config: Config, a: Path, b: Path) -> Comparison:
+def collect_items(d, prefix=None):
+    items = {}
+    for k in d.GetListOfKeys():
+        obj = k.ReadObj()
+        #  print(type(obj))
+        if isinstance(obj, ROOT.TDirectoryFile):
+            items.update(
+                collect_items(
+                    obj, prefix + k.GetName() + "__" if prefix is not None else ""
+                )
+            )
+            continue
+        if (
+            not isinstance(obj, ROOT.TH1)
+            and not isinstance(obj, ROOT.TH2)
+            and not isinstance(obj, ROOT.TEfficiency)
+        ):
+            continue
+        obj.SetDirectory(0)
+        items[prefix + k.GetName()] = obj
+    return items
+
+
+def compare(config: Config, a: Path, b: Path, _filter: str) -> Comparison:
     rf_a = ROOT.TFile.Open(str(a))
     rf_b = ROOT.TFile.Open(str(b))
 
-    keys_a = {k.GetName() for k in rf_a.GetListOfKeys()}
-    keys_b = {k.GetName() for k in rf_b.GetListOfKeys()}
+    key_map_a = collect_items(rf_a)
+    key_map_b = collect_items(rf_b)
 
-    key_map_a = {k.GetName(): k for k in rf_a.GetListOfKeys()}
-    key_map_b = {k.GetName(): k for k in rf_b.GetListOfKeys()}
+    keys_a = set(key_map_a.keys())
+    keys_b = set(key_map_b.keys())
+    #  keys_a = {k.GetName() for k in rf_a.GetListOfKeys()}
+    #  keys_b = {k.GetName() for k in rf_b.GetListOfKeys()}
+
+    #  key_map_a = {k.GetName(): k for k in rf_a.GetListOfKeys()}
+    #  key_map_b = {k.GetName(): k for k in rf_b.GetListOfKeys()}
     common = keys_a.intersection(keys_b)
+
+    common = set(filter(lambda s: re.match(_filter, s) is not None, common))
+
+    #  print(common)
+
+    #  print(set([type(o) for o in key_map_a.values()]))
+
+    #  import sys
+
+    #  sys.exit()
 
     result = Comparison(file_a=str(a), file_b=str(b))
 
     for key in track(sorted(common), console=console, description="Comparing..."):
-        item_a = key_map_a[key].ReadObj()
-        item_b = key_map_b[key].ReadObj()
+        item_a = key_map_a[key]
+        item_b = key_map_b[key]
 
-        item_a.SetDirectory(0)
-        item_b.SetDirectory(0)
+        #  item_a.SetDirectory(0)
+        #  item_b.SetDirectory(0)
 
         if type(item_a) != type(item_b):
             console.rule(f"{key}")

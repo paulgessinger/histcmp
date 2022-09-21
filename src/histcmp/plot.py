@@ -6,6 +6,7 @@ import urllib.parse
 #  from pathlib import Path
 import numpy
 import mplhep
+import mplhep.atlas
 
 import hist
 from matplotlib import pyplot
@@ -34,19 +35,15 @@ pyplot.rcParams.update(
 #  return f'<img src="{self.path}"/>'
 
 
-def plot_ratio_eff(a, a_err, b, b_err):
+def plot_ratio_eff(a, a_err, b, b_err, label_a, label_b):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         fig, (ax, rax) = pyplot.subplots(
             2, 1, gridspec_kw=dict(height_ratios=[2, 0.5], hspace=0.05)
         )
 
-        mplhep.histplot(
-            a.values(), a.axes[0].edges, yerr=a_err, ax=ax, label="monitored"
-        )
-        mplhep.histplot(
-            b.values(), b.axes[0].edges, yerr=b_err, ax=ax, label="reference"
-        )
+        mplhep.histplot(a.values(), a.axes[0].edges, yerr=a_err, ax=ax, label=label_a)
+        mplhep.histplot(b.values(), b.axes[0].edges, yerr=b_err, ax=ax, label=label_b)
 
         ratio = a.values() / b.values()
 
@@ -72,22 +69,28 @@ def plot_ratio_eff(a, a_err, b, b_err):
 
     ax.set_xlabel("")
     rax.set_xlabel(a.axes[0].name)
+    rax.set_ylabel(f"{label_a} / {label_b}")
     ax.set_xticklabels([])
 
     rax.set_xlim(*ax.get_xlim())
-    ax.set_ylim(top=1.025)
 
     ax.set_title(a.name)
     ax.set_title(a.name)
     ax.legend()
     fig.align_ylabels()
+
+    ax.set_ylim(top=1.015)
     #  fig.tight_layout()
     fig.subplots_adjust(left=0.14, right=0.95, top=0.9, bottom=0.1)
 
     return fig, (ax, rax)
 
 
-def plot_ratio(a: hist.Hist, b: hist.Hist):
+def sanitize_name(s):
+    return s.replace(r"\GT", r">").replace(r"\LT", "<")
+
+
+def plot_ratio(a: hist.Hist, b: hist.Hist, label_a: str, label_b: str):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
 
@@ -117,9 +120,9 @@ def plot_ratio(a: hist.Hist, b: hist.Hist):
             main_ax_artists, subplot_ax_artists = a.plot_ratio(
                 b,
                 ax_dict=dict(main_ax=ax, ratio_ax=rax),
-                rp_ylabel=r"monitored / reference",
-                rp_num_label="monitored",
-                rp_denom_label="reference",
+                rp_ylabel=f"{label_a} / {label_b}",
+                rp_num_label=label_a,
+                rp_denom_label=label_b,
                 rp_uncert_draw_type="line",  # line or bar
                 rp_uncertainty_type="poisson",
                 rp_ylim=(ymin, ymax),
@@ -140,7 +143,7 @@ def plot_ratio(a: hist.Hist, b: hist.Hist):
 
     rax.set_xlim(*ax.get_xlim())
 
-    ax.set_title(a.name)
+    ax.set_title(sanitize_name(a.name))
     fig.align_ylabels()
     #  fig.tight_layout()
     fig.subplots_adjust(left=0.14, right=0.95, top=0.9, bottom=0.1)
