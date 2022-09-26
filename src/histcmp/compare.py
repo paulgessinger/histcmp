@@ -166,7 +166,8 @@ def collect_items(d, prefix=None):
         ):
             continue
         obj.SetDirectory(0)
-        items[prefix + k.GetName()] = obj
+        p = prefix or ""
+        items[p + k.GetName()] = obj
     return items
 
 
