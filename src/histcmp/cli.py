@@ -35,6 +35,7 @@ def main(
     label_reference: Optional[str] = None,
     title: str = "Histogram comparison",
     _filter: str = typer.Option(".*", "-f", "--filter"),
+    format: str = "pdf",
 ):
     try:
         import ROOT
@@ -71,7 +72,13 @@ def main(
     console.print(Panel(Pretty(config), title="Configuration"))
 
     try:
-        comparison = compare(config, monitored, reference, _filter=_filter)
+        filter_path = Path(_filter)
+        if filter_path.exists():
+            with filter_path.open() as fh:
+                filters = fh.read().strip().split("\n")
+        else:
+            filters = [_filter]
+        comparison = compare(config, monitored, reference, filters=filters)
 
         comparison.label_monitored = label_monitored
         comparison.label_reference = label_reference
@@ -165,7 +172,7 @@ def main(
         if output is not None:
             if plots is not None:
                 plots.mkdir(exist_ok=True, parents=True)
-            make_report(comparison, output, plots)
+            make_report(comparison, output, plots, format=format)
 
         if status != Status.SUCCESS:
             raise typer.Exit(1)

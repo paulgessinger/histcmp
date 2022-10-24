@@ -142,6 +142,7 @@ def make_report(
     comparison: Comparison,
     output: Path,
     plot_dir: Optional[Path] = None,
+    format: str = "pdf",
 ):
 
     #  copy_static(output)
@@ -155,7 +156,11 @@ def make_report(
             comparison.items, description="Making plots", console=console
         ):
             p = item.ensure_plots(
-                output, plot_dir, comparison.label_monitored, comparison.label_reference
+                output,
+                plot_dir,
+                comparison.label_monitored,
+                comparison.label_reference,
+                format=format,
             )
             if p is not None:
                 console.print(p)

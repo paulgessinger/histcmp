@@ -62,7 +62,12 @@ class ComparisonItem:
         #  raise RuntimeError("Shouldn't happen")
 
     def ensure_plots(
-        self, report_dir: Path, plot_dir: Path, label_a: str, label_b: str
+        self,
+        report_dir: Path,
+        plot_dir: Path,
+        label_a: str,
+        label_b: str,
+        format: str,
     ):
 
         if isinstance(self.item_a, ROOT.TH2):
@@ -107,7 +112,7 @@ class ComparisonItem:
             self._generic_plots.append(plot_to_uri(fig))
             if plot_dir is not None:
                 safe_key = self.key.replace("/", "_")
-                fig.savefig(plot_dir / f"{safe_key}.pdf")
+                fig.savefig(plot_dir / f"{safe_key}.{format}")
         except ValueError as e:
             rich.print(f"ERROR during plot: {e}")
 
@@ -155,7 +160,10 @@ def collect_items(d, prefix=None):
         if isinstance(obj, ROOT.TDirectoryFile):
             items.update(
                 collect_items(
-                    obj, prefix + k.GetName() + "__" if prefix is not None else ""
+                    obj,
+                    prefix + d.GetName() + k.GetName() + "__"
+                    if prefix is not None
+                    else "",
                 )
             )
             continue
@@ -167,11 +175,12 @@ def collect_items(d, prefix=None):
             continue
         obj.SetDirectory(0)
         p = prefix or ""
-        items[p + k.GetName()] = obj
+        #  print(prefix)
+        items[p + d.GetName() + "__" + k.GetName()] = obj
     return items
 
 
-def compare(config: Config, a: Path, b: Path, _filter: str) -> Comparison:
+def compare(config: Config, a: Path, b: Path, filters: List[str]) -> Comparison:
     rf_a = ROOT.TFile.Open(str(a))
     rf_b = ROOT.TFile.Open(str(b))
 
@@ -187,11 +196,22 @@ def compare(config: Config, a: Path, b: Path, _filter: str) -> Comparison:
     #  key_map_b = {k.GetName(): k for k in rf_b.GetListOfKeys()}
     common = keys_a.intersection(keys_b)
 
-    common = set(filter(lambda s: re.match(_filter, s) is not None, common))
+    #  print(common)
+    def select(s) -> bool:
+        accepted = True
+        rejected = False
+        for f in filters:
+            if f.startswith("! "):
+                if re.match(f[2:], s):
+                    rejected = True
+            else:
+                if not re.match(f, s):
+                    accepted = False
+        return accepted and not rejected
+
+    common = set(filter(select, common))
 
     #  print(common)
-
-    #  print(set([type(o) for o in key_map_a.values()]))
 
     #  import sys
 
