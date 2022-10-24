@@ -154,6 +154,9 @@ def can_handle_item(item) -> bool:
 
 def collect_items(d, prefix=None):
     items = {}
+    dname = d.GetName()
+    if isinstance(d, ROOT.TFile):
+        dname = ""
     for k in d.GetListOfKeys():
         obj = k.ReadObj()
         #  print(type(obj))
@@ -161,9 +164,7 @@ def collect_items(d, prefix=None):
             items.update(
                 collect_items(
                     obj,
-                    prefix + d.GetName() + k.GetName() + "__"
-                    if prefix is not None
-                    else "",
+                    prefix + dname + k.GetName() + "__" if prefix is not None else "",
                 )
             )
             continue
@@ -176,7 +177,10 @@ def collect_items(d, prefix=None):
         obj.SetDirectory(0)
         p = prefix or ""
         #  print(prefix)
-        items[p + d.GetName() + "__" + k.GetName()] = obj
+        ik = (
+            p + dname + "__" + k.GetName() if (dname != "" and p != "") else k.GetName()
+        )
+        items[ik] = obj
     return items
 
 
