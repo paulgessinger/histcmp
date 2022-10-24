@@ -60,8 +60,8 @@ def get_bin_content_error(item) -> numpy.array:
 
         for i in range(out.shape[0]):
             for j in range(out.shape[1]):
-                out[i][j] = item.GetBinContent(i, j)
-                err[i][j] = item.GetBinError(i, j)
+                out[i][j] = item.GetBinContent(i + 1, j + 1)
+                err[i][j] = item.GetBinError(i + 1, j + 1)
 
         return out, err
     elif isinstance(item, ROOT.TH1):
@@ -90,6 +90,7 @@ def _process_axis_title(s):
 
 def convert_axis(axis):
     if axis.IsVariableBinSize():
+        print("variable")
         edges = [axis.GetBinLowEdge(b) for b in range(1, axis.GetNbins() + 1)]
         edges.append(axis.GetBinUpEdge(axis.GetNbins()))
         axis = hist.axis.Variable(edges, name=_process_axis_title(axis.GetTitle()))

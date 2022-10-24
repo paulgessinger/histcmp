@@ -69,6 +69,7 @@ class ComparisonItem:
         label_b: str,
         format: str,
     ):
+        figs = []
 
         if isinstance(self.item_a, ROOT.TH2):
             h2_a = convert_hist(self.item_a)
@@ -79,6 +80,10 @@ class ComparisonItem:
                 h1_b = h2_b.project(proj)
 
                 fig, (ax, rax) = plot_ratio(h1_a, h1_b, label_a, label_b)
+
+                d = "XY"[proj]
+
+                figs.append((fig, f"_p{d}"))
                 #  mplhep.atlas.text("Simulation Internal", ax=ax, loc=1)
 
         elif isinstance(self.item_a, ROOT.TEfficiency):
@@ -95,6 +100,7 @@ class ComparisonItem:
                 largest = numpy.max(nonzero)
 
             fig, (ax, rax) = plot_ratio_eff(a, a_err, b, b_err, label_a, label_b)
+            figs.append((fig, ""))
             ax.set_ylim(
                 bottom=lowest * 0.99,
                 top=largest * 1.008,
@@ -105,16 +111,18 @@ class ComparisonItem:
             a = convert_hist(self.item_a)
             b = convert_hist(self.item_b)
             fig, (ax, rax) = plot_ratio(a, b, label_a, label_b)
+            figs.append((fig, ""))
 
             #  mplhep.atlas.text("Simulation Internal", ax=ax, loc=1)
 
-        try:
-            self._generic_plots.append(plot_to_uri(fig))
-            if plot_dir is not None:
-                safe_key = self.key.replace("/", "_")
-                fig.savefig(plot_dir / f"{safe_key}.{format}")
-        except ValueError as e:
-            rich.print(f"ERROR during plot: {e}")
+        for fig, suffix in figs:
+            try:
+                self._generic_plots.append(plot_to_uri(fig))
+                if plot_dir is not None:
+                    safe_key = self.key.replace("/", "_") + suffix
+                    fig.savefig(plot_dir / f"{safe_key}.{format}")
+            except ValueError as e:
+                rich.print(f"ERROR during plot: {e}")
 
     @property
     def first_plot_index(self):
