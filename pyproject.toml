@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "histcmp"
-version = "0.6.0"
+version = "0.6.1"
 description = ""
 authors = ["Paul Gessinger <hello@paulgessinger.com>"]
 license = "MIT"
@@ -13,7 +13,7 @@ histcmp = 'histcmp.cli:app'
 
 [tool.poetry.dependencies]
 python = ">=3.8,<3.12"
-typer = "^0.4.0"
+typer = "^0.9.0"
 wasabi = "^0.9.0"
 rich = "^11.0.0"
 numpy = "^1.23.2"
