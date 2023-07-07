@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "histcmp"
-version = "0.6.2"
+version = "0.6.3"
 description = ""
 authors = ["Paul Gessinger <hello@paulgessinger.com>"]
 license = "MIT"
@@ -12,20 +12,21 @@ packages = [
 histcmp = 'histcmp.cli:app'
 
 [tool.poetry.dependencies]
-python = ">=3.8,<3.12"
+python = ">=3.9,<3.12"
 typer = "^0.9.0"
 wasabi = "^0.9.0"
 rich = "^13.4.2"
-numpy = "^1.23.2"
+numpy = "^1.25.0"
 Jinja2 = "^3.0.3"
 requests = "^2.27.1"
 matplotlib = "^3.5.1"
 hist = {extras = ["plot"], version = "^2.6.0"}
 pydantic = "^1.9.0"
 PyYAML = "^6.0"
-click = "8.0.4"
+click = "^8.1.4"
 scipy = "^1.9.1"
 mplhep = "^0.3.26"
+pandas = "^2.0.3"
 
 [tool.poetry.dev-dependencies]
 black = "^20.8b1"
