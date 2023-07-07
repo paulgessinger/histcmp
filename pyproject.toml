@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "histcmp"
-version = "0.6.1"
+version = "0.6.2"
 description = ""
 authors = ["Paul Gessinger <hello@paulgessinger.com>"]
 license = "MIT"
@@ -15,7 +15,7 @@ histcmp = 'histcmp.cli:app'
 python = ">=3.8,<3.12"
 typer = "^0.9.0"
 wasabi = "^0.9.0"
-rich = "^11.0.0"
+rich = "^13.4.2"
 numpy = "^1.23.2"
 Jinja2 = "^3.0.3"
 requests = "^2.27.1"
