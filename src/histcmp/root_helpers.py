@@ -118,7 +118,7 @@ def convert_hist(item):
         )
         cont, err = get_bin_content_error(item)
         h.view().value = cont
-        h.view().variance = err ** 2
+        h.view().variance = err**2
         return h
     elif isinstance(item, ROOT.TEfficiency):
         passed = convert_hist(item.GetPassedHistogram())
@@ -173,7 +173,7 @@ def convert_hist(item):
         )
         cont, err = get_bin_content_error(item)
         h.view().value = cont
-        h.view().variance = err ** 2
+        h.view().variance = err**2
         return h
 
 

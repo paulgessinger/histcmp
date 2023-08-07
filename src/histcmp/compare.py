@@ -6,6 +6,8 @@ import fnmatch
 import re
 
 import rich
+from rich.console import Console, ConsoleOptions, RenderResult
+from rich.rule import Rule
 from rich.progress import track
 from rich.text import Text
 from rich.panel import Panel
@@ -132,6 +134,40 @@ class ComparisonItem:
     def generic_plots(self) -> List[Path]:
         return self._generic_plots
 
+    def __rich_console__(
+        self, console: Console, options: ConsoleOptions
+    ) -> RenderResult:
+        yield Rule(f"{self.key} ({self.item_a.__class__.__name__})")
+        dstyle = "strike"
+        for check in self.checks:
+            if check.is_applicable:
+                if check.is_valid:
+                    yield Text.assemble(
+                        Text.from_markup(icons.success),
+                        " ",
+                        Text(str(check), style="bold green"),
+                        " ",
+                        check.label,
+                    )
+                else:
+                    yield Text.assemble(
+                        Text.from_markup(icons.failure),
+                        " ",
+                        Text(
+                            str(check),
+                            style="bold red" if not check.is_disabled else dstyle,
+                        ),
+                        " ",
+                        check.label,
+                    )
+            else:
+                yield Text.assemble(
+                    Text.from_markup(icons.inconclusive),
+                    " ",
+                    str(check),
+                    style="yellow",
+                )
+
 
 @dataclass
 class Comparison:
@@ -190,7 +226,9 @@ def collect_items(d, prefix=None):
     return items
 
 
-def compare(config: Config, a: Path, b: Path, filters: List[str], console) -> Comparison:
+def compare(
+    config: Config, a: Path, b: Path, filters: List[str], console
+) -> Comparison:
     rf_a = ROOT.TFile.Open(str(a))
     rf_b = ROOT.TFile.Open(str(b))
 
@@ -242,9 +280,8 @@ def compare(config: Config, a: Path, b: Path, filters: List[str], console) -> Co
                 f"Type mismatch between files for key {key}: {item_a} != {type(item_b)} => treating as both removed and newly added"
             )
             result.a_only.add(key)
-            result.a_only.add(key)
-
-        console.rule(f"{key} ({item_a.__class__.__name__})")
+            result.b_only.add(key)
+            continue
 
         if not can_handle_item(item_a):
             warn(f"Unable to handle item of type {type(item_a)}")
@@ -294,34 +331,9 @@ def compare(config: Config, a: Path, b: Path, filters: List[str], console) -> Co
             for inst in subchecks:
                 item.checks.append(inst)
                 if inst.is_applicable:
-                    if inst.is_valid:
-                        console.print(
-                            icons.success,
-                            Text(
-                                str(inst),
-                                style="bold green" if not inst.is_disabled else dstyle,
-                            ),
-                            inst.label,
-                        )
-                    else:
-                        if is_github_actions and not inst.is_disabled:
-                            print(
-                                github_actions_marker(
-                                    "error",
-                                    key + ": " + str(inst) + "\n" + inst.label,
-                                )
-                            )
-                        console.print(
-                            icons.failure,
-                            Text(
-                                str(inst),
-                                style="bold red" if not inst.is_disabled else dstyle,
-                            ),
-                            inst.label,
-                        )
-                else:
-                    console.print(icons.inconclusive, inst, style="yellow")
+                    inst.is_valid  # we expect this to be called
 
+        console.print(item)
         result.items.append(item)
 
         if all(c.status == Status.INCONCLUSIVE for c in item.checks):

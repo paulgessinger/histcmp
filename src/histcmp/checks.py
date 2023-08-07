@@ -197,7 +197,7 @@ class KolmogorovTest(ScoreThresholdCheck):
         int_a, err_a = integralAndError(self.item_a)
         int_b, err_b = integralAndError(self.item_b)
         values = numpy.array([int_a, int_b, err_a, err_b])
-        if numpy.any(numpy.isnan(values)) or numpy.any(values==0):
+        if numpy.any(numpy.isnan(values)) or numpy.any(values == 0):
             return False
 
         if self.score == 0.0:
@@ -226,7 +226,9 @@ class Chi2Test(ScoreThresholdCheck):
     @functools.cached_property
     def _result_v(self):
         with push_root_level(ROOT.kWarning):
-            self._result_v = chi2result(*ROOT.MyChi2Test(self.item_a, self.item_b, "UUOFUF"))
+            self._result_v = chi2result(
+                *ROOT.MyChi2Test(self.item_a, self.item_b, "UUOFUF")
+            )
 
         return self._result_v
 
@@ -285,7 +287,7 @@ class IntegralCheck(ScoreThresholdCheck):
 
         if self.err_a > 0.0:
             self.sigma = numpy.abs(self.int_a - self.int_b) / numpy.sqrt(
-                self.err_a ** 2 + self.err_b ** 2
+                self.err_a**2 + self.err_b**2
             )
 
     @property
@@ -295,7 +297,7 @@ class IntegralCheck(ScoreThresholdCheck):
     @property
     def label(self) -> str:
         cmp = "<" if self.is_valid else ">="
-        return f"Intregal: {self.int_a}+-{self.err_a:} vs. {self.int_b}+-{self.err_b}: (int_a - int_b) / sqrt(sigma(int_a)^2 + sigma(int_b)^2) = {self.sigma:.2f} {cmp} {self.threshold}"
+        return f"Integral: {self.int_a}+-{self.err_a:} vs. {self.int_b}+-{self.err_b}: (int_a - int_b) / sqrt(sigma(int_a)^2 + sigma(int_b)^2) = {self.sigma:.2f} {cmp} {self.threshold}"
 
     @functools.cached_property
     def is_applicable(self) -> bool:
@@ -418,7 +420,7 @@ class ResidualCheck(CompatCheck):
         val, _ = get_bin_content_error(self.residual)
         _, err_a = get_bin_content_error(self.item_a)
         _, err_b = get_bin_content_error(self.item_b)
-        err = numpy.sqrt(err_a ** 2 + err_b ** 2)
+        err = numpy.sqrt(err_a**2 + err_b**2)
         m = err > 0
         pull = numpy.zeros_like(val)
         pull[m] = numpy.abs(val[m]) / err[m]

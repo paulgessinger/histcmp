@@ -141,11 +141,10 @@ def copy_static(output: Path) -> None:
 def make_report(
     comparison: Comparison,
     output: Path,
-    console:  histcmp.console.Console,
+    console: histcmp.console.Console,
     plot_dir: Optional[Path] = None,
     format: str = "pdf",
 ):
-
     #  copy_static(output)
 
     env = make_environment()

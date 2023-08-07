@@ -33,6 +33,7 @@ from histcmp.compare import compare, Comparison
 
 app = typer.Typer()
 
+
 @contextmanager
 def auto_console(file: str) -> IO[str]:
     if file == "-":
@@ -42,7 +43,8 @@ def auto_console(file: str) -> IO[str]:
         with file.open("w") as fh:
             yield Console(file=fh)
 
-def print_summary(comparison: Comparison, console: Console)-> Status:
+
+def print_summary(comparison: Comparison, console: Console) -> Status:
     status = Status.SUCCESS
     style = "bold green"
     failures = [c for c in comparison.items if c.status == Status.FAILURE]
@@ -54,11 +56,7 @@ def print_summary(comparison: Comparison, console: Console)-> Status:
         ),
     ]
 
-    if (
-        len(failures) > 0
-        or len(comparison.a_only) > 0
-        or len(comparison.b_only) > 0
-    ):
+    if len(failures) > 0 or len(comparison.a_only) > 0 or len(comparison.b_only) > 0:
         status = Status.FAILURE
         style = "bold red"
         msg = [
@@ -111,9 +109,7 @@ def print_summary(comparison: Comparison, console: Console)-> Status:
     console.print(
         Panel(
             Group(
-                Text(
-                    f"{Emoji.replace(status.icon)} {status.name}", justify="center"
-                ),
+                Text(f"{Emoji.replace(status.icon)} {status.name}", justify="center"),
                 *msg,
             ),
             style=style,
@@ -121,6 +117,7 @@ def print_summary(comparison: Comparison, console: Console)-> Status:
     )
 
     return status
+
 
 @app.command()
 def main(
@@ -139,7 +136,6 @@ def main(
     log: str = "-",
 ):
     with auto_console(log) as console:
-
         console.print(
             Panel(
                 Group(f"Monitored: {monitored}", f"Reference: {reference}"),
@@ -161,14 +157,15 @@ def main(
                 filters = fh.read().strip().split("\n")
         else:
             filters = [_filter]
-        comparison = compare(config, monitored, reference, filters=filters, console=console)
+        comparison = compare(
+            config, monitored, reference, filters=filters, console=console
+        )
 
         comparison.label_monitored = label_monitored
         comparison.label_reference = label_reference
         comparison.title = title
 
         status = print_summary(comparison, console)
-
 
         if output is not None:
             if plots is not None:
@@ -177,4 +174,3 @@ def main(
 
         if status != Status.SUCCESS:
             raise typer.Exit(1)
-
