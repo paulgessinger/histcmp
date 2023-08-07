@@ -12,7 +12,6 @@ from rich.panel import Panel
 from matplotlib import pyplot
 import numpy
 
-from histcmp.console import console, fail, info, good, warn
 from histcmp.root_helpers import (
     integralAndError,
     get_bin_content,
@@ -191,7 +190,7 @@ def collect_items(d, prefix=None):
     return items
 
 
-def compare(config: Config, a: Path, b: Path, filters: List[str]) -> Comparison:
+def compare(config: Config, a: Path, b: Path, filters: List[str], console) -> Comparison:
     rf_a = ROOT.TFile.Open(str(a))
     rf_b = ROOT.TFile.Open(str(b))
 
@@ -239,7 +238,7 @@ def compare(config: Config, a: Path, b: Path, filters: List[str]) -> Comparison:
 
         if type(item_a) != type(item_b):
             console.rule(f"{key}")
-            fail(
+            console.fail(
                 f"Type mismatch between files for key {key}: {item_a} != {type(item_b)} => treating as both removed and newly added"
             )
             result.a_only.add(key)

@@ -11,7 +11,7 @@ from rich.emoji import Emoji
 import jinja2
 import yaml
 
-from histcmp.console import fail, info, console
+from histcmp.console import Console
 from histcmp.report import make_report
 from histcmp.checks import Status
 from histcmp.config import Config
@@ -46,6 +46,8 @@ def main(
 
     from histcmp.compare import compare
 
+    console = Console()
+
     console.print(
         Panel(
             Group(f"Monitored: {monitored}", f"Reference: {reference}"),
@@ -78,7 +80,7 @@ def main(
                 filters = fh.read().strip().split("\n")
         else:
             filters = [_filter]
-        comparison = compare(config, monitored, reference, filters=filters)
+        comparison = compare(config, monitored, reference, filters=filters, console=console)
 
         comparison.label_monitored = label_monitored
         comparison.label_reference = label_reference
