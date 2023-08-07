@@ -10,9 +10,9 @@ from rich.emoji import Emoji
 
 import jinja2
 
+import histcmp.console
 from histcmp.compare import Comparison
 from histcmp.checks import Status
-from histcmp.console import console
 from histcmp.root_helpers import push_root_level
 from histcmp import icons
 
@@ -141,6 +141,7 @@ def copy_static(output: Path) -> None:
 def make_report(
     comparison: Comparison,
     output: Path,
+    console:  histcmp.console.Console,
     plot_dir: Optional[Path] = None,
     format: str = "pdf",
 ):

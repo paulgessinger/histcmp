@@ -9,6 +9,7 @@ custom_theme = Theme(
 class Console(RichConsole):
     def __init__(self, *args, **kwargs):
         kwargs["theme"] = custom_theme
+        super().__init__(*args, **kwargs)
 
     def info(self, *args, **kwargs):
         self.print(":information:", *args, style="info", **kwargs)
