@@ -11,7 +11,6 @@ from rich.text import Text
 from rich.panel import Panel
 from matplotlib import pyplot
 import numpy
-import mplhep.atlas
 
 from histcmp.console import console, fail, info, good, warn
 from histcmp.root_helpers import (
