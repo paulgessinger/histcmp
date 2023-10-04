@@ -4,7 +4,6 @@ from abc import ABC, abstractmethod, abstractproperty
 import collections
 from pathlib import Path
 import ctypes
-import functools
 from enum import Enum
 from typing import Tuple, Optional, List
 import warnings
@@ -116,6 +115,20 @@ class CompatCheck(ABC):
     def __str__(self) -> str:
         return self.name + (" " + self.suffix if self.suffix is not None else "")
 
+    @property
+    def rich_repr(self)-> str:
+        if self.status == Status.SUCCESS:
+            color = "green"
+        elif self.status == Status.FAILURE:
+            color = "bold red"
+        else:
+            color = "yellow"
+
+        if not self.is_applicable:
+            color += " strike"
+
+        return f"{self.status.icon} [{color}]{self.name}[/{color}]"
+
 
 class CompositeCheck(CompatCheck):
     def __init__(self, *args: List[CompatCheck], **kwargs):
@@ -151,7 +164,7 @@ class ScoreThresholdCheck(CompatCheck):
     def score(self) -> float:
         raise NotImplementedError()
 
-    @functools.cached_property
+    @property
     def is_valid(self) -> bool:
         if not self.is_applicable:
             raise RuntimeError(f"{self} not applicable, cannot check if valid")
@@ -177,30 +190,38 @@ class ScoreThresholdCheck(CompatCheck):
 
 class KolmogorovTest(ScoreThresholdCheck):
     def __init__(self, item_a, item_b, threshold: float = 0.68, **kwargs):
-        self.item_a = item_a
-        self.item_b = item_b
         self.threshold = threshold
 
         super().__init__(threshold=threshold, op=operator.gt, **kwargs)
 
-    @functools.cached_property
+        self._score = 0.0
+        self._applicable = self._calc_applicable(item_a, item_b)
+
+
+
+    @property
     def score(self) -> float:
-        return self.item_a.KolmogorovTest(self.item_b)
+        return self._score
 
-    @functools.cached_property
+    @property
     def is_applicable(self) -> bool:
-        with push_root_level(ROOT.kError):
-            if isinstance(self.item_a, ROOT.TEfficiency):
-                self.item_a = tefficiency_to_th1(self.item_a)
-                self.item_b = tefficiency_to_th1(self.item_b)
+        return self._applicable
 
-        int_a, err_a = integralAndError(self.item_a)
-        int_b, err_b = integralAndError(self.item_b)
+    def _calc_applicable(self, item_a, item_b) -> bool:
+        with push_root_level(ROOT.kError):
+            if isinstance(item_a, ROOT.TEfficiency):
+                item_a = tefficiency_to_th1(item_a)
+                item_b = tefficiency_to_th1(item_b)
+
+        int_a, err_a = integralAndError(item_a)
+        int_b, err_b = integralAndError(item_b)
         values = numpy.array([int_a, int_b, err_a, err_b])
-        if numpy.any(numpy.isnan(values)) or numpy.any(values == 0):
+        if numpy.any(numpy.isnan(values)) or numpy.any(values==0):
             return False
 
-        if self.score == 0.0:
+        self._score =  item_a.KolmogorovTest(item_b)
+
+        if self._score == 0.0:
             return False
 
         return True
@@ -223,27 +244,30 @@ class Chi2Test(ScoreThresholdCheck):
 
         super().__init__(threshold=threshold, op=operator.gt, **kwargs)
 
-    @functools.cached_property
-    def _result_v(self):
-        with push_root_level(ROOT.kWarning):
-            self._result_v = chi2result(
-                *ROOT.MyChi2Test(self.item_a, self.item_b, "UUOFUF")
-            )
 
-        return self._result_v
+        self._is_applicable = self._check_applicable()
+
 
     @property
     def score(self) -> float:
         res = self._result_v
         return res.prob
 
-    @functools.cached_property
+    @property
     def is_applicable(self) -> bool:
+        return self._is_applicable
+
+
+    def _check_applicable(self) -> bool:
         int_a, _ = integralAndError(self.item_a)
         int_b, _ = integralAndError(self.item_b)
         if int_a == 0 or int_b == 0:
             return False
 
+        with push_root_level(ROOT.kError):
+            self._result_v = chi2result(
+                *ROOT.MyChi2Test(self.item_a, self.item_b, "UUOFUF")
+            )
         res = self._result_v
         if res.ndf == -1:
             return False
@@ -299,13 +323,14 @@ class IntegralCheck(ScoreThresholdCheck):
         cmp = "<" if self.is_valid else ">="
         return f"Integral: {self.int_a}+-{self.err_a:} vs. {self.int_b}+-{self.err_b}: (int_a - int_b) / sqrt(sigma(int_a)^2 + sigma(int_b)^2) = {self.sigma:.2f} {cmp} {self.threshold}"
 
-    @functools.cached_property
+    @property
     def is_applicable(self) -> bool:
         return self.sigma != float("inf")
 
     @property
     def name(self) -> str:
         return "IntegralTest"
+
 
 
 class RatioCheck(CompatCheck):
@@ -337,8 +362,8 @@ class RatioCheck(CompatCheck):
 
             else:
                 if isinstance(item_a, ROOT.TProfile):
-                    item_a = item_a.ProjectionX()
-                    item_b = item_b.ProjectionX()
+                    item_a = item_a.ProjectionX(f"{item_a.GetName()}_item_a_px_ratio_check")
+                    item_b = item_b.ProjectionX(f"{item_b.GetName()}_item_b_px_ratio_check")
 
                 try:
                     ratio = item_a.Clone()
@@ -355,7 +380,7 @@ class RatioCheck(CompatCheck):
                 ratio[m] = ratio[m] - 1
                 self.ratio_pull = ratio[m] / err[m]
 
-    @functools.cached_property
+    @property
     def is_applicable(self) -> bool:
         if self.ratio_pull is not None:
             nbins = len(self.ratio_pull)
@@ -384,55 +409,56 @@ class RatioCheck(CompatCheck):
 class ResidualCheck(CompatCheck):
     def __init__(self, item_a, item_b, threshold=1, **kwargs):
         self.threshold = threshold
-        self.item_a = item_a
-        self.item_b = item_b
 
         super().__init__(**kwargs)
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", RuntimeWarning)
-            if isinstance(self.item_a, ROOT.TEfficiency):
+            if isinstance(item_a, ROOT.TEfficiency):
                 with push_root_level(ROOT.kError):
-                    self.item_a = tefficiency_to_th1(self.item_a)
-                    self.item_b = tefficiency_to_th1(self.item_b)
+                    item_a = tefficiency_to_th1(item_a)
+                    item_b = tefficiency_to_th1(item_b)
 
-            if isinstance(self.item_a, ROOT.TProfile):
-                self.item_a = self.item_a.ProjectionX()
-                self.item_b = self.item_b.ProjectionX()
+            if isinstance(item_a, ROOT.TProfile):
+                item_a = item_a.ProjectionX(f"{item_a.GetName()}_item_a_px_residual_check")
+                item_b = item_b.ProjectionX(f"{item_b.GetName()}_item_b_px_residual_check")
 
             try:
-                self.residual = self.item_a.Clone()
+                self.residual = item_a.Clone()
                 self.residual.SetDirectory(0)
-                self.residual.Add(self.item_b, -1)
+                self.residual.Add(item_b, -1)
 
                 self.applicable = True
             except Exception:
                 self.applicable = False
 
+
+        self._pulls = self._calc_pulls(item_a, item_b)
+
+    @property
     def is_applicable(self) -> bool:
         val, err, pull = self._pulls
         if numpy.sum(~numpy.isnan(pull)) == 0:
             return False
         return self.applicable
 
-    @functools.cached_property
-    def _pulls(self):
+    def _calc_pulls(self, item_a, item_b):
         val, _ = get_bin_content_error(self.residual)
-        _, err_a = get_bin_content_error(self.item_a)
-        _, err_b = get_bin_content_error(self.item_b)
+        _, err_a = get_bin_content_error(item_a)
+        _, err_b = get_bin_content_error(item_b)
         err = numpy.sqrt(err_a**2 + err_b**2)
         m = err > 0
         pull = numpy.zeros_like(val)
         pull[m] = numpy.abs(val[m]) / err[m]
         return val, err, pull
 
-    @functools.cached_property
+    @property
     def is_valid(self) -> bool:
         val, err, pull = self._pulls
         nabove = numpy.sum(pull[~numpy.isnan(pull)] >= self.threshold)
         return nabove < numpy.sqrt(len(val))
 
-    @functools.cached_property
+    @property
     def label(self) -> str:
         val, err, pull = self._pulls
         count = numpy.sum(pull[~numpy.isnan(pull)] >= self.threshold)

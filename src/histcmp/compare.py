@@ -61,6 +61,32 @@ class ComparisonItem:
         return Status.INCONCLUSIVE
         #  raise RuntimeError("Shouldn't happen")
 
+
+    @functools.cached_property
+    def summary(self) -> Text:
+        text = f"{self.key}("
+        for i, c in enumerate(self.checks):
+            if i > 0:
+                text+=", "
+
+            text+=c.rich_repr
+
+        text+=")"
+        return Text.from_markup(text)
+
+    @functools.cached_property
+    def failure_summary(self) -> Text:
+        text = f"{self.key}("
+        for i, c in enumerate([c for c in self.checks if c.status == Status.FAILURE]):
+            if i > 0:
+                text+=", "
+
+            text+=c.rich_repr
+
+        text+=")"
+        return Text.from_markup(text)
+
+
     def ensure_plots(
         self,
         report_dir: Path,
@@ -313,7 +339,6 @@ def compare(
         #  print(configured_checks)
 
         for ctype, check_kw in configured_checks.items():
-            #  print(ctype, check_kw)
             subchecks = []
             if isinstance(item_a, ROOT.TH2):
                 for proj in "ProjectionX", "ProjectionY":
@@ -327,11 +352,8 @@ def compare(
             else:
                 subchecks.append(ctype(item_a, item_b, **check_kw))
 
-            dstyle = "strike"
             for inst in subchecks:
                 item.checks.append(inst)
-                if inst.is_applicable:
-                    inst.is_valid  # we expect this to be called
 
         console.print(item)
         result.items.append(item)
@@ -343,4 +365,6 @@ def compare(
     result.a_only = {(k, rf_a.Get(k).__class__.__name__) for k in (keys_a - keys_b)}
     result.common = {(k, rf_a.Get(k).__class__.__name__) for k in common}
 
+    #  rf_a.Close()
+    #  rf_b.Close()
     return result
