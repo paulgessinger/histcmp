@@ -90,7 +90,7 @@ def _process_axis_title(s):
 
 def convert_axis(axis):
     if axis.IsVariableBinSize():
-        print("variable")
+        #  print("variable")
         edges = [axis.GetBinLowEdge(b) for b in range(1, axis.GetNbins() + 1)]
         edges.append(axis.GetBinUpEdge(axis.GetNbins()))
         axis = hist.axis.Variable(edges, name=_process_axis_title(axis.GetTitle()))
