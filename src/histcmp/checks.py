@@ -8,6 +8,7 @@ import functools
 from enum import Enum
 from typing import Tuple, Optional, List
 import warnings
+from cppyy.gbl.std import get
 
 import ROOT
 
@@ -49,15 +50,13 @@ auto MyChi2Test(const TH1* a, const TH1* b, Option_t* option){
 
    Double_t prob = a->Chi2TestX(b,chi2,ndf,igood,option,res);
 
-   return std::make_tuple(prob, chi2, ndf, igood, res);
+   return std::make_tuple(prob, chi2, ndf, igood);
 }
 """
 )
 
 
-chi2result = collections.namedtuple(
-    "chi2result", ["prob", "chi2", "ndf", "igood", "res"]
-)
+chi2result = collections.namedtuple("chi2result", ["prob", "chi2", "ndf", "igood"])
 
 
 class CompatCheck(ABC):
@@ -197,7 +196,7 @@ class KolmogorovTest(ScoreThresholdCheck):
         int_a, err_a = integralAndError(self.item_a)
         int_b, err_b = integralAndError(self.item_b)
         values = numpy.array([int_a, int_b, err_a, err_b])
-        if numpy.any(numpy.isnan(values)) or numpy.any(values==0):
+        if numpy.any(numpy.isnan(values)) or numpy.any(values == 0):
             return False
 
         if self.score == 0.0:
@@ -226,9 +225,10 @@ class Chi2Test(ScoreThresholdCheck):
     @functools.cached_property
     def _result_v(self):
         with push_root_level(ROOT.kWarning):
-            self._result_v = chi2result(*ROOT.MyChi2Test(self.item_a, self.item_b, "UUOFUF"))
 
-        return self._result_v
+            t = ROOT.MyChi2Test(self.item_a, self.item_b, "UUOFUF")
+            res = chi2result(get[0](t), get[1](t), get[2](t), get[3](t))
+            return res
 
     @property
     def score(self) -> float:
@@ -285,7 +285,7 @@ class IntegralCheck(ScoreThresholdCheck):
 
         if self.err_a > 0.0:
             self.sigma = numpy.abs(self.int_a - self.int_b) / numpy.sqrt(
-                self.err_a ** 2 + self.err_b ** 2
+                self.err_a**2 + self.err_b**2
             )
 
     @property
@@ -418,7 +418,7 @@ class ResidualCheck(CompatCheck):
         val, _ = get_bin_content_error(self.residual)
         _, err_a = get_bin_content_error(self.item_a)
         _, err_b = get_bin_content_error(self.item_b)
-        err = numpy.sqrt(err_a ** 2 + err_b ** 2)
+        err = numpy.sqrt(err_a**2 + err_b**2)
         m = err > 0
         pull = numpy.zeros_like(val)
         pull[m] = numpy.abs(val[m]) / err[m]
