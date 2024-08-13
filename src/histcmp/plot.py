@@ -42,6 +42,9 @@ def plot_ratio_eff(a, a_err, b, b_err, label_a, label_b):
             2, 1, gridspec_kw=dict(height_ratios=[2, 0.5], hspace=0.05)
         )
 
+        a_err = numpy.maximum(0, a_err)
+        b_err = numpy.maximum(0, b_err)
+
         mplhep.histplot(a.values(), a.axes[0].edges, yerr=a_err, ax=ax, label=label_a)
         mplhep.histplot(b.values(), b.axes[0].edges, yerr=b_err, ax=ax, label=label_b)
 
