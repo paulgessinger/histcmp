@@ -1,6 +1,6 @@
 [project]
 name = "histcmp"
-version = "0.6.8"
+version = "0.7.0"
 description = "Compare histograms"
 authors = [{name="Paul Gessinger", email="hello@paulgessinger.com"}]
 license = "MIT"
