@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Annotated
 
 import typer
 from rich.panel import Panel
@@ -24,18 +24,78 @@ app = typer.Typer()
 
 @app.command()
 def main(
-    config_path: Path = typer.Option(
-        None, "--config", "-c", dir_okay=False, exists=True
-    ),
-    monitored: Path = typer.Argument(..., exists=True, dir_okay=False),
-    reference: Path = typer.Argument(..., exists=True, dir_okay=False),
-    output: Optional[Path] = typer.Option(None, "-o", "--output", dir_okay=False),
-    plots: Optional[Path] = typer.Option(None, "-p", "--plots", file_okay=False),
-    label_monitored: Optional[str] = "monitored",
-    label_reference: Optional[str] = "reference",
-    title: str = "Histogram comparison",
-    _filter: str = typer.Option(".*", "-f", "--filter"),
-    format: str = "pdf",
+    monitored: Annotated[
+        Path, 
+        typer.Argument(
+            exists=True, 
+            dir_okay=False,
+            help="Path to the monitored histogram file"
+        )
+    ],
+    reference: Annotated[
+        Path, 
+        typer.Argument(
+            exists=True, 
+            dir_okay=False,
+            help="Path to the reference histogram file"
+        )
+    ],
+    config_path: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--config", "-c", 
+            dir_okay=False, 
+            exists=True,
+            help="Path to configuration file"
+        )
+    ] = None,
+    output: Annotated[
+        Optional[Path], 
+        typer.Option(
+            "-o", "--output", 
+            dir_okay=False,
+            help="Path to output report file"
+        )
+    ] = None,
+    plots: Annotated[
+        Optional[Path], 
+        typer.Option(
+            "-p", "--plots", 
+            file_okay=False,
+            help="Directory to save comparison plots"
+        )
+    ] = None,
+    label_monitored: Annotated[
+        str, 
+        typer.Option(
+            help="Label for the monitored dataset in plots and reports"
+        )
+    ] = "monitored",
+    label_reference: Annotated[
+        str, 
+        typer.Option(
+            help="Label for the reference dataset in plots and reports"
+        )
+    ] = "reference",
+    title: Annotated[
+        str, 
+        typer.Option(
+            help="Title for the comparison report"
+        )
+    ] = "Histogram comparison",
+    _filter: Annotated[
+        str, 
+        typer.Option(
+            "-f", "--filter",
+            help="Regex filter pattern for histogram selection or path to a file with filters"
+        )
+    ] = ".*",
+    format: Annotated[
+        str, 
+        typer.Option(
+            help="Output format for plots (pdf, png, etc.)"
+        )
+    ] = "pdf",
 ):
     try:
         import ROOT
