@@ -41,7 +41,306 @@ class Status(Enum):
             return icons.failure
 
 
+def chi2_test_x(h1, h2, option="UU"):
     """
+    Python implementation of ROOT's Chi2TestX function.
+    
+    Parameters:
+    -----------
+    h1, h2 : ROOT.TH1
+        The histograms to compare
+    option : str
+        Options for the test:
+        - "UU" = experiment experiment comparison (unweighted-unweighted)
+        - "UW" = experiment MC comparison (unweighted-weighted)
+        - "WW" = MC MC comparison (weighted-weighted)
+        - "NORM" = if one or both histograms is scaled
+        - "OF" = overflows included
+        - "UF" = underflows included
+    
+    Returns:
+    --------
+    tuple: (prob, chi2, ndf, igood)
+        prob: p-value of the test
+        chi2: chi-square value
+        ndf: number of degrees of freedom
+        igood: test output status
+            - igood=0 - no problems
+            - For unweighted unweighted comparison:
+                - igood=1: There is a bin in the 1st histogram with less than 1 event
+                - igood=2: There is a bin in the 2nd histogram with less than 1 event
+                - igood=3: When conditions for igood=1 and igood=2 are satisfied
+            - For unweighted weighted comparison:
+                - igood=1: There is a bin in the 1st histogram with less than 1 event
+                - igood=2: There is a bin in the 2nd histogram with less than 10 effective events
+                - igood=3: When conditions for igood=1 and igood=2 are satisfied
+    """
+    # Initialize variables
+    chi2 = 0.0
+    ndf = 0
+    igood = 0
+    
+    # Check dimensions
+    if h1.GetDimension() != h2.GetDimension():
+        print("Error: Histograms have different dimensions")
+        return 0.0, 0.0, 0, 0
+    
+    # Get axes
+    xaxis1 = h1.GetXaxis()
+    xaxis2 = h2.GetXaxis()
+    yaxis1 = h1.GetYaxis()
+    yaxis2 = h2.GetYaxis()
+    zaxis1 = h1.GetZaxis()
+    zaxis2 = h2.GetZaxis()
+    
+    # Get number of bins
+    nbinx1 = xaxis1.GetNbins()
+    nbinx2 = xaxis2.GetNbins()
+    nbiny1 = yaxis1.GetNbins()
+    nbiny2 = yaxis2.GetNbins()
+    nbinz1 = zaxis1.GetNbins()
+    nbinz2 = zaxis2.GetNbins()
+    
+    # Check number of channels
+    if nbinx1 != nbinx2 or nbiny1 != nbiny2 or nbinz1 != nbinz2:
+        print("Error: Histograms have different number of bins")
+        return 0.0, 0.0, 0, 0
+    
+    # Set up bin ranges
+    i_start = j_start = k_start = 1
+    i_end = nbinx1
+    j_end = nbiny1
+    k_end = nbinz1
+    
+    # Check for axis ranges
+    if xaxis1.TestBit(ROOT.TAxis.kAxisRange):
+        i_start = xaxis1.GetFirst()
+        i_end = xaxis1.GetLast()
+    
+    if yaxis1.TestBit(ROOT.TAxis.kAxisRange):
+        j_start = yaxis1.GetFirst()
+        j_end = yaxis1.GetLast()
+    
+    if zaxis1.TestBit(ROOT.TAxis.kAxisRange):
+        k_start = zaxis1.GetFirst()
+        k_end = zaxis1.GetLast()
+    
+    # Handle overflow/underflow options
+    opt = option.upper()
+    if "OF" in opt:
+        if h1.GetDimension() == 3:
+            k_end = nbinz1 + 1
+        if h1.GetDimension() >= 2:
+            j_end = nbiny1 + 1
+        if h1.GetDimension() >= 1:
+            i_end = nbinx1 + 1
+    
+    if "UF" in opt:
+        if h1.GetDimension() == 3:
+            k_start = 0
+        if h1.GetDimension() >= 2:
+            j_start = 0
+        if h1.GetDimension() >= 1:
+            i_start = 0
+    
+    # Calculate degrees of freedom
+    ndf = (i_end - i_start + 1) * (j_end - j_start + 1) * (k_end - k_start + 1) - 1
+    
+    # Determine comparison type
+    comparison_uu = "UU" in opt
+    comparison_uw = "UW" in opt
+    comparison_ww = "WW" in opt
+    
+    if not (comparison_uu or comparison_uw or comparison_ww):
+        comparison_uu = True  # Default is UU
+    
+    # Calculate sums for normalization
+    sum1 = sum2 = 0.0
+    sumw1 = sumw2 = 0.0
+    
+    for i in range(i_start, i_end + 1):
+        for j in range(j_start, j_end + 1):
+            for k in range(k_start, k_end + 1):
+                bin_idx = h1.GetBin(i, j, k)
+                sum1 += h1.GetBinContent(bin_idx)
+                sum2 += h2.GetBinContent(bin_idx)
+                
+                if h1.GetSumw2N() > 0:
+                    sumw1 += h1.GetBinError(bin_idx) ** 2 - 1
+                if h2.GetSumw2N() > 0:
+                    sumw2 += h2.GetBinError(bin_idx) ** 2
+    
+    # Check if histograms are empty
+    if sum1 == 0 or sum2 == 0:
+        print("Error: One of the histograms is empty")
+        return 0.0, 0.0, 0, 0
+    
+    # Unweighted-unweighted comparison
+    if comparison_uu:
+        m = n = 0  # Counters for bins with issues
+        
+        for i in range(i_start, i_end + 1):
+            for j in range(j_start, j_end + 1):
+                for k in range(k_start, k_end + 1):
+                    bin_idx = h1.GetBin(i, j, k)
+                    cnt1 = h1.GetBinContent(bin_idx)
+                    cnt2 = h2.GetBinContent(bin_idx)
+                    
+                    # Skip empty bins
+                    if cnt1 == 0 and cnt2 == 0:
+                        ndf -= 1
+                        continue
+                    
+                    # Check for bins with less than 1 event
+                    if cnt1 < 1:
+                        m += 1
+                    if cnt2 < 1:
+                        n += 1
+                    
+                    # Calculate expected values
+                    sum_tot = sum1 + sum2
+                    expected1 = sum1 * (cnt1 + cnt2) / sum_tot
+                    expected2 = sum2 * (cnt1 + cnt2) / sum_tot
+                    
+                    # Calculate chi2 contribution
+                    if expected1 > 0:
+                        chi2 += (cnt1 - expected1) ** 2 / expected1
+                    if expected2 > 0:
+                        chi2 += (cnt2 - expected2) ** 2 / expected2
+        
+        # Set igood based on bin issues
+        if m > 0:
+            igood += 1
+        if n > 0:
+            igood += 2
+    
+    # Unweighted-weighted comparison
+    elif comparison_uw:
+        m = n = 0  # Counters for bins with issues
+        
+        for i in range(i_start, i_end + 1):
+            for j in range(j_start, j_end + 1):
+                for k in range(k_start, k_end + 1):
+                    bin_idx = h1.GetBin(i, j, k)
+                    cnt1 = h1.GetBinContent(bin_idx)
+                    cnt2 = h2.GetBinContent(bin_idx)
+                    e2sq = h2.GetBinError(bin_idx) ** 2
+                    
+                    # Skip empty bins
+                    if cnt1 == 0 and cnt2 == 0:
+                        ndf -= 1
+                        continue
+                    
+                    # Handle case where weighted histogram has zero bin content and error
+                    if cnt2 == 0 and e2sq == 0:
+                        if sumw2 > 0:
+                            e2sq = sumw2 / sum2
+                        else:
+                            print(f"Error: Hist2 has in bin ({i},{j},{k}) zero content and zero errors")
+                            return 0.0, 0.0, 0, 0
+                    
+                    # Check for bins with issues
+                    if cnt1 < 1:
+                        m += 1
+                    if e2sq > 0 and cnt2 ** 2 / e2sq < 10:
+                        n += 1
+                    
+                    # Calculate variables for chi2
+                    var1 = sum2 * cnt2 - sum1 * e2sq
+                    var2 = var1 ** 2 + 4.0 * sum2 ** 2 * cnt1 * e2sq
+                    
+                    # Handle numerical issues
+                    while var1 ** 2 + cnt1 == 0 or var1 + numpy.sqrt(var2) == 0:
+                        sum1 += 1
+                        cnt1 += 1
+                        var1 = sum2 * cnt2 - sum1 * e2sq
+                        var2 = var1 ** 2 + 4.0 * sum2 ** 2 * cnt1 * e2sq
+                    
+                    var2 = numpy.sqrt(var2)
+                    
+                    # Calculate probability and expected values
+                    probb = (var1 + var2) / (2.0 * sum2 ** 2)
+                    nexp1 = probb * sum1
+                    nexp2 = probb * sum2
+                    
+                    # Calculate deltas and chi2 contribution
+                    delta1 = cnt1 - nexp1
+                    delta2 = cnt2 - nexp2
+                    
+                    chi2 += delta1 ** 2 / nexp1
+                    if e2sq > 0:
+                        chi2 += delta2 ** 2 / e2sq
+        
+        # Set igood based on bin issues
+        if m > 0:
+            igood += 1
+        if n > 0:
+            igood += 2
+    
+    # Weighted-weighted comparison
+    elif comparison_ww:
+        m = n = 0  # Counters for bins with issues
+        
+        for i in range(i_start, i_end + 1):
+            for j in range(j_start, j_end + 1):
+                for k in range(k_start, k_end + 1):
+                    bin_idx = h1.GetBin(i, j, k)
+                    cnt1 = h1.GetBinContent(bin_idx)
+                    cnt2 = h2.GetBinContent(bin_idx)
+                    e1sq = h1.GetBinError(bin_idx) ** 2
+                    e2sq = h2.GetBinError(bin_idx) ** 2
+                    
+                    # Skip empty bins
+                    if cnt1 == 0 and cnt2 == 0:
+                        ndf -= 1
+                        continue
+                    
+                    # Handle case where histograms have zero bin content and error
+                    if cnt1 == 0 and e1sq == 0:
+                        if sumw1 > 0:
+                            e1sq = sumw1 / sum1
+                        else:
+                            print(f"Error: Hist1 has in bin ({i},{j},{k}) zero content and zero errors")
+                            return 0.0, 0.0, 0, 0
+                    
+                    if cnt2 == 0 and e2sq == 0:
+                        if sumw2 > 0:
+                            e2sq = sumw2 / sum2
+                        else:
+                            print(f"Error: Hist2 has in bin ({i},{j},{k}) zero content and zero errors")
+                            return 0.0, 0.0, 0, 0
+                    
+                    # Check for bins with issues
+                    if e1sq > 0 and cnt1 ** 2 / e1sq < 10:
+                        m += 1
+                    if e2sq > 0 and cnt2 ** 2 / e2sq < 10:
+                        n += 1
+                    
+                    # Calculate chi2 contribution
+                    if "NORM" in opt:
+                        # Normalized comparison
+                        s1 = cnt1 / sum1
+                        s2 = cnt2 / sum2
+                        es1 = e1sq / (sum1 ** 2)
+                        es2 = e2sq / (sum2 ** 2)
+                        
+                        if es1 + es2 > 0:
+                            chi2 += (s1 - s2) ** 2 / (es1 + es2)
+                    else:
+                        # Direct comparison
+                        if e1sq + e2sq > 0:
+                            chi2 += (cnt1 - cnt2) ** 2 / (e1sq + e2sq)
+        
+        # Set igood based on bin issues
+        if m > 0:
+            igood += 1
+        if n > 0:
+            igood += 2
+    
+    # Calculate p-value
+    prob = ROOT.TMath.Prob(chi2, ndf)
+    
+    return prob, chi2, ndf, igood
 
 
 chi2result = collections.namedtuple("chi2result", ["prob", "chi2", "ndf", "igood"])
