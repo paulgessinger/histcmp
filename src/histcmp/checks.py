@@ -41,23 +41,18 @@ class Status(Enum):
             return icons.failure
 
 
-ROOT.gInterpreter.Declare(
     """
-auto MyChi2Test(const TH1* a, const TH1* b, Option_t* option){
-   Double_t chi2 = 0;
-   Int_t ndf = 0, igood = 0;
-   Double_t* res = 0;
-
-   Double_t prob = a->Chi2TestX(b,chi2,ndf,igood,option,res);
-
-   return std::make_tuple(prob, chi2, ndf, igood);
-}
-"""
-)
 
 
 chi2result = collections.namedtuple("chi2result", ["prob", "chi2", "ndf", "igood"])
 
+def chi2TestX(h1, h2, option="UU"):
+    root_chi2 = ctypes.c_double(0)
+    root_ndf = ctypes.c_int(0)
+    root_igood = ctypes.c_int(0)
+    res = ctypes.POINTER(ctypes.c_double)()
+    root_prob = h1.Chi2TestX(h2, root_chi2, root_ndf, root_igood, option, res)
+    return chi2result(root_prob, root_chi2.value, root_ndf.value, root_igood.value)
 
 class CompatCheck(ABC):
     def __init__(self, disabled: bool = False, suffix: Optional[str] = None):
@@ -225,9 +220,7 @@ class Chi2Test(ScoreThresholdCheck):
     @functools.cached_property
     def _result_v(self):
         with push_root_level(ROOT.kWarning):
-
-            t = ROOT.MyChi2Test(self.item_a, self.item_b, "UUOFUF")
-            res = chi2result(get[0](t), get[1](t), get[2](t), get[3](t))
+            res = chi2TestX(self.item_a, self.item_b, "UUOFUF")
             return res
 
     @property
