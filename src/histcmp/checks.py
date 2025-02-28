@@ -41,8 +41,6 @@ class Status(Enum):
             return icons.failure
 
 
-    """
-
 
 chi2result = collections.namedtuple("chi2result", ["prob", "chi2", "ndf", "igood"])
 
