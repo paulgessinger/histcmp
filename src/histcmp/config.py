@@ -4,8 +4,7 @@ import pydantic
 
 
 class BaseModel(pydantic.BaseModel):
-    class Config:
-        extra = "forbid"
+    model_config = pydantic.ConfigDict(extra="forbid")
 
 
 #  class CheckList(BaseModel):
