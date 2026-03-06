@@ -70,7 +70,22 @@ class ComparisonItem:
     ):
         figs = []
 
-        if isinstance(self.item_a, ROOT.TH2):
+        if isinstance(self.item_a, ROOT.TH3):
+            h2_a = convert_hist(self.item_a)
+            h2_b = convert_hist(self.item_b)
+
+            for proj in [0, 1, 2]:
+                h1_a = h2_a.project(proj)
+                h1_b = h2_b.project(proj)
+
+                fig, (ax, rax) = plot_ratio(h1_a, h1_b, label_a, label_b)
+
+                d = "XYZ"[proj]
+
+                figs.append((fig, f"_p{d}"))
+                #  mplhep.atlas.text("Simulation Internal", ax=ax, loc=1)
+
+        elif isinstance(self.item_a, ROOT.TH2):
             h2_a = convert_hist(self.item_a)
             h2_b = convert_hist(self.item_b)
 
@@ -177,6 +192,7 @@ def collect_items(d, prefix=None):
             continue
         if (
             not isinstance(obj, ROOT.TH1)
+            and not isinstance(obj, ROOT.TH3)
             and not isinstance(obj, ROOT.TH2)
             and not isinstance(obj, ROOT.TEfficiency)
         ):
@@ -279,6 +295,15 @@ def compare(config: Config, a: Path, b: Path, filters: List[str]) -> Comparison:
         for ctype, check_kw in configured_checks.items():
             #  print(ctype, check_kw)
             subchecks = []
+            if isinstance(item_a, ROOT.TH3):
+                for proj in "ProjectionX", "ProjectionY", "ProjectionZ":
+                    proj_a = getattr(item_a, proj)().Clone()
+                    proj_b = getattr(item_b, proj)().Clone()
+                    proj_a.SetDirectory(0)
+                    proj_b.SetDirectory(0)
+                    subchecks.append(
+                        ctype(proj_a, proj_b, suffix="p" + proj[-1], **check_kw)
+                    )
             if isinstance(item_a, ROOT.TH2):
                 for proj in "ProjectionX", "ProjectionY":
                     proj_a = getattr(item_a, proj)().Clone()

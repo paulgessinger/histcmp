@@ -22,7 +22,19 @@ def push_root_level(value):
 
 
 def integralAndError(item) -> Tuple[float, float]:
-    if isinstance(item, ROOT.TH2):
+    if isinstance(item, ROOT.TH3):
+        e = ctypes.c_double(-1)
+        i = item.IntegralAndError(
+            0,
+            item.GetXaxis().GetNbins(),
+            0,
+            item.GetYaxis().GetNbins(),
+            0,
+            item.GetZaxis().GetNbins(),
+            e,
+        )
+        return i, e.value
+    elif isinstance(item, ROOT.TH2):
         e = ctypes.c_double(-1)
         i = item.IntegralAndError(
             0, item.GetXaxis().GetNbins(), 0, item.GetYaxis().GetNbins(), e
@@ -37,7 +49,22 @@ def integralAndError(item) -> Tuple[float, float]:
 
 
 def get_bin_content(item) -> numpy.array:
-    if isinstance(item, ROOT.TH2):
+    if isinstance(item, ROOT.TH3):
+        out = numpy.zeros(
+            (
+                item.GetXaxis().GetNbins(),
+                item.GetYaxis().GetNbins(),
+                item.GetZaxis().GetNbins(),
+            )
+        )
+
+        for i in range(out.shape[0]):
+            for j in range(out.shape[1]):
+                for k in range(out.shape[2]):
+                    out[i][j][k] = item.GetBinContent(i, j, k)
+
+        return out
+    elif isinstance(item, ROOT.TH2):
         out = numpy.zeros((item.GetXaxis().GetNbins(), item.GetYaxis().GetNbins()))
 
         for i in range(out.shape[0]):
@@ -54,7 +81,30 @@ def get_bin_content(item) -> numpy.array:
 
 
 def get_bin_content_error(item) -> numpy.array:
-    if isinstance(item, ROOT.TH2):
+    if isinstance(item, ROOT.TH3):
+        out = numpy.zeros(
+            (
+                item.GetXaxis().GetNbins(),
+                item.GetYaxis().GetNbins(),
+                item.GetZaxis().GetNbins(),
+            )
+        )
+        err = numpy.zeros(
+            (
+                item.GetXaxis().GetNbins(),
+                item.GetYaxis().GetNbins(),
+                item.GetZaxis().GetNbins(),
+            )
+        )
+
+        for i in range(out.shape[0]):
+            for j in range(out.shape[1]):
+                for k in range(out.shape[2]):
+                    out[i][j][k] = item.GetBinContent(i + 1, j + 1, k + 1)
+                    err[i][j][k] = item.GetBinError(i + 1, j + 1, k + 1)
+
+        return out, err
+    elif isinstance(item, ROOT.TH2):
         out = numpy.zeros((item.GetXaxis().GetNbins(), item.GetYaxis().GetNbins()))
         err = numpy.zeros((item.GetXaxis().GetNbins(), item.GetYaxis().GetNbins()))
 
@@ -108,7 +158,20 @@ def convert_axis(axis):
 
 
 def convert_hist(item):
-    if isinstance(item, ROOT.TH2):
+    if isinstance(item, ROOT.TH3):
+        h = hist.Hist(
+            convert_axis(item.GetXaxis()),
+            convert_axis(item.GetYaxis()),
+            convert_axis(item.GetZaxis()),
+            storage=hist.storage.Weight(),
+            name=_process_axis_title(item.GetTitle()),
+            label=_process_axis_title(item.GetZaxis().GetTitle()),
+        )
+        cont, err = get_bin_content_error(item)
+        h.view().value = cont
+        h.view().variance = err ** 2
+        return h
+    elif isinstance(item, ROOT.TH2):
         h = hist.Hist(
             convert_axis(item.GetXaxis()),
             convert_axis(item.GetYaxis()),
