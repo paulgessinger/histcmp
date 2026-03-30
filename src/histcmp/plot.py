@@ -6,7 +6,6 @@ import urllib.parse
 #  from pathlib import Path
 import numpy
 import mplhep
-import mplhep.atlas
 
 import hist
 from matplotlib import pyplot
