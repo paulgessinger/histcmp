@@ -253,6 +253,40 @@ def test_tprofile_uses_fallback(tmp_path):
     np.testing.assert_allclose(err, expected_err)
 
 
+# ---------- weighted/unweighted detection ----------
+
+
+def test_is_unweighted_unfilled():
+    """A bare TH1 with no Sumw2 is reported unweighted."""
+    from histcmp.root_helpers import is_unweighted_histogram
+
+    h = ROOT.TH1D("h", "", 5, 0, 5)
+    # No Sumw2 call, no fills -> GetSumw2().GetSize() == 0.
+    assert is_unweighted_histogram(h) is True
+
+
+def test_is_unweighted_unit_fill():
+    """Fill(x) without weights leaves sumw2[bin] == content[bin]."""
+    from histcmp.root_helpers import is_unweighted_histogram
+
+    h = ROOT.TH1D("h", "", 5, 0.0, 5.0)
+    h.Sumw2()
+    for x in [0.5, 1.5, 1.5, 2.5, 2.5, 2.5]:
+        h.Fill(x)
+    assert is_unweighted_histogram(h) is True
+
+
+def test_is_weighted_after_weighted_fill():
+    """Fill(x, w) with w != 1 makes sumw2 diverge from content."""
+    from histcmp.root_helpers import is_unweighted_histogram
+
+    h = ROOT.TH1D("h", "", 5, 0.0, 5.0)
+    h.Sumw2()
+    h.Fill(0.5, 0.7)
+    h.Fill(1.5, 2.3)
+    assert is_unweighted_histogram(h) is False
+
+
 # ---------- collect_items lazy-deserialization ----------
 
 

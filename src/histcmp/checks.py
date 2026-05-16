@@ -17,6 +17,7 @@ from histcmp.root_helpers import (
     integralAndError,
     get_bin_content,
     get_bin_content_error,
+    is_unweighted_histogram,
     push_root_level,
     convert_hist,
     tefficiency_to_th1,
@@ -217,8 +218,14 @@ class Chi2Test(ScoreThresholdCheck):
 
     @functools.cached_property
     def _result_v(self):
+        # Pick the U/W mode that matches each histogram's fill semantics.
+        # Using "UU" against a weighted hist gives ROOT's
+        # "Both histograms are not unweighted" RuntimeWarning and a
+        # statistically wrong p-value.
+        opt_a = "U" if is_unweighted_histogram(self.item_a) else "W"
+        opt_b = "U" if is_unweighted_histogram(self.item_b) else "W"
         with push_root_level(ROOT.kWarning):
-            res = chi2TestX(self.item_a, self.item_b, "UUOFUF")
+            res = chi2TestX(self.item_a, self.item_b, opt_a + opt_b + "OFUF")
             return res
 
     @property

@@ -134,6 +134,32 @@ def _full_content_error(item):
     return content, error
 
 
+def is_unweighted_histogram(item) -> bool:
+    """Return True iff item was filled without per-entry weights.
+
+    The check mirrors ROOT's own heuristic: a histogram is unweighted when
+    its Sumw2 array is empty, or when fSumw2[bin] == |fArray[bin]| for every
+    cell (which is what Fill() without a weight produces). Subclasses with
+    custom error semantics (TProfile, TEfficiency, ...) are conservatively
+    reported as weighted so callers pick the WW-style statistics.
+    """
+    sumw2 = item.GetSumw2()
+    n = item.GetNcells()
+    if sumw2.GetSize() != n:
+        return True
+
+    cls = item.ClassName() if hasattr(item, "ClassName") else type(item).__name__
+    dtype = _BASIC_TH_DTYPES.get(cls)
+    if dtype is None:
+        return False
+    try:
+        content = _buffer_to_numpy(item.GetArray(), n, dtype)
+        variance = _buffer_to_numpy(sumw2.GetArray(), n, numpy.float64)
+    except (TypeError, ValueError):
+        return False
+    return bool(numpy.array_equal(variance, numpy.abs(content)))
+
+
 def get_bin_content_error(item) -> numpy.array:
     if isinstance(item, ROOT.TH3):
         nx = item.GetXaxis().GetNbins()
