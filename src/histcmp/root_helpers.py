@@ -80,51 +80,118 @@ def get_bin_content(item) -> numpy.array:
         raise TypeError("Invalid type")
 
 
+# Histogram classes whose underlying fArray buffer is the bin content directly
+# and whose errors come from fSumw2 (or sqrt(|content|) when Sumw2 is empty).
+# TProfile / TEfficiency override GetBinContent / GetBinError, so they must
+# stay on the per-bin fallback path.
+_BASIC_TH_DTYPES = {
+    "TH1D": numpy.float64, "TH2D": numpy.float64, "TH3D": numpy.float64,
+    "TH1F": numpy.float32, "TH2F": numpy.float32, "TH3F": numpy.float32,
+    "TH1I": numpy.int32,   "TH2I": numpy.int32,   "TH3I": numpy.int32,
+    "TH1S": numpy.int16,   "TH2S": numpy.int16,   "TH3S": numpy.int16,
+    "TH1C": numpy.int8,    "TH2C": numpy.int8,    "TH3C": numpy.int8,
+    "TH1L": numpy.int64,   "TH2L": numpy.int64,   "TH3L": numpy.int64,
+}
+
+
+def _buffer_to_numpy(buf, n, dtype):
+    """Materialize a cppyy pointer buffer of length n into a writable float64 array."""
+    try:
+        buf.reshape((n,))
+    except (AttributeError, TypeError):
+        pass
+    return numpy.frombuffer(buf, dtype=dtype, count=n).astype(numpy.float64, copy=True)
+
+
+def _full_content_error(item):
+    """Vectorized extraction of full (with under/overflow) content + error arrays.
+
+    Returns (content, error) flat float64 arrays of length item.GetNcells(),
+    or (None, None) if the histogram subclass overrides GetBinContent/Error
+    (e.g. TProfile, TEfficiency) and a per-bin fallback is required.
+    """
+    cls = item.ClassName() if hasattr(item, "ClassName") else type(item).__name__
+    dtype = _BASIC_TH_DTYPES.get(cls)
+    if dtype is None:
+        return None, None
+
+    n = item.GetNcells()
+    try:
+        content = _buffer_to_numpy(item.GetArray(), n, dtype)
+    except (TypeError, ValueError):
+        return None, None
+
+    sumw2 = item.GetSumw2()
+    if sumw2.GetSize() == n:
+        try:
+            variance = _buffer_to_numpy(sumw2.GetArray(), n, numpy.float64)
+        except (TypeError, ValueError):
+            return None, None
+        error = numpy.sqrt(variance)
+    else:
+        error = numpy.sqrt(numpy.abs(content))
+
+    return content, error
+
+
 def get_bin_content_error(item) -> numpy.array:
     if isinstance(item, ROOT.TH3):
-        out = numpy.zeros(
-            (
-                item.GetXaxis().GetNbins(),
-                item.GetYaxis().GetNbins(),
-                item.GetZaxis().GetNbins(),
-            )
-        )
-        err = numpy.zeros(
-            (
-                item.GetXaxis().GetNbins(),
-                item.GetYaxis().GetNbins(),
-                item.GetZaxis().GetNbins(),
-            )
-        )
+        nx = item.GetXaxis().GetNbins()
+        ny = item.GetYaxis().GetNbins()
+        nz = item.GetZaxis().GetNbins()
 
-        for i in range(out.shape[0]):
-            for j in range(out.shape[1]):
-                for k in range(out.shape[2]):
+        content_full, error_full = _full_content_error(item)
+        if content_full is not None:
+            # ROOT TH3 storage order: bin = (nx+2) * ((ny+2)*k + j) + i
+            shape = (nz + 2, ny + 2, nx + 2)
+            content = content_full.reshape(shape)[1 : nz + 1, 1 : ny + 1, 1 : nx + 1]
+            error = error_full.reshape(shape)[1 : nz + 1, 1 : ny + 1, 1 : nx + 1]
+            # Transpose to (nx, ny, nz) to match the historical layout
+            return (
+                numpy.ascontiguousarray(content.transpose(2, 1, 0)),
+                numpy.ascontiguousarray(error.transpose(2, 1, 0)),
+            )
+
+        out = numpy.zeros((nx, ny, nz))
+        err = numpy.zeros((nx, ny, nz))
+        for i in range(nx):
+            for j in range(ny):
+                for k in range(nz):
                     out[i][j][k] = item.GetBinContent(i + 1, j + 1, k + 1)
                     err[i][j][k] = item.GetBinError(i + 1, j + 1, k + 1)
-
         return out, err
     elif isinstance(item, ROOT.TH2):
-        out = numpy.zeros((item.GetXaxis().GetNbins(), item.GetYaxis().GetNbins()))
-        err = numpy.zeros((item.GetXaxis().GetNbins(), item.GetYaxis().GetNbins()))
+        nx = item.GetXaxis().GetNbins()
+        ny = item.GetYaxis().GetNbins()
 
-        for i in range(out.shape[0]):
-            for j in range(out.shape[1]):
+        content_full, error_full = _full_content_error(item)
+        if content_full is not None:
+            # ROOT TH2 storage order: bin = (nx+2)*j + i
+            shape = (ny + 2, nx + 2)
+            content = content_full.reshape(shape)[1 : ny + 1, 1 : nx + 1]
+            error = error_full.reshape(shape)[1 : ny + 1, 1 : nx + 1]
+            return (
+                numpy.ascontiguousarray(content.T),
+                numpy.ascontiguousarray(error.T),
+            )
+
+        out = numpy.zeros((nx, ny))
+        err = numpy.zeros((nx, ny))
+        for i in range(nx):
+            for j in range(ny):
                 out[i][j] = item.GetBinContent(i + 1, j + 1)
                 err[i][j] = item.GetBinError(i + 1, j + 1)
-
         return out, err
     elif isinstance(item, ROOT.TH1):
+        nx = item.GetXaxis().GetNbins()
+
+        content_full, error_full = _full_content_error(item)
+        if content_full is not None:
+            return content_full[1 : nx + 1].copy(), error_full[1 : nx + 1].copy()
+
         return (
-            numpy.array(
-                [
-                    item.GetBinContent(b)
-                    for b in range(1, item.GetXaxis().GetNbins() + 1)
-                ]
-            ),
-            numpy.array(
-                [item.GetBinError(b) for b in range(1, item.GetXaxis().GetNbins() + 1)]
-            ),
+            numpy.array([item.GetBinContent(b) for b in range(1, nx + 1)]),
+            numpy.array([item.GetBinError(b) for b in range(1, nx + 1)]),
         )
     else:
         raise TypeError(f"Invalid type {type(item)}")
@@ -140,9 +207,22 @@ def _process_axis_title(s):
 
 def convert_axis(axis):
     if axis.IsVariableBinSize():
-        #  print("variable")
-        edges = [axis.GetBinLowEdge(b) for b in range(1, axis.GetNbins() + 1)]
-        edges.append(axis.GetBinUpEdge(axis.GetNbins()))
+        # TAxis stores the (nbins+1) edges in a TArrayD; pull the whole buffer.
+        xbins = axis.GetXbins()
+        n_edges = xbins.GetSize()
+        if n_edges > 0:
+            try:
+                edges = _buffer_to_numpy(xbins.GetArray(), n_edges, numpy.float64)
+            except (TypeError, ValueError):
+                edges = numpy.array(
+                    [axis.GetBinLowEdge(b) for b in range(1, axis.GetNbins() + 1)]
+                    + [axis.GetBinUpEdge(axis.GetNbins())]
+                )
+        else:
+            edges = numpy.array(
+                [axis.GetBinLowEdge(b) for b in range(1, axis.GetNbins() + 1)]
+                + [axis.GetBinUpEdge(axis.GetNbins())]
+            )
         axis = hist.axis.Variable(edges, name=_process_axis_title(axis.GetTitle()))
         return axis
     else:

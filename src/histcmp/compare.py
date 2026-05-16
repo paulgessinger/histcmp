@@ -180,9 +180,14 @@ def collect_items(d, prefix=None):
     if isinstance(d, ROOT.TFile):
         dname = ""
     for k in d.GetListOfKeys():
-        obj = k.ReadObj()
-        #  print(type(obj))
-        if isinstance(obj, ROOT.TDirectoryFile):
+        # Resolve the class from the key without deserializing the payload.
+        # ReadObj is expensive (decompress + stream), so skip it for objects
+        # we'd just discard (TGraph, TCanvas, TTree, ...).
+        cls = ROOT.TClass.GetClass(k.GetClassName())
+        if cls is None:
+            continue
+        if cls.InheritsFrom("TDirectoryFile"):
+            obj = k.ReadObj()
             items.update(
                 collect_items(
                     obj,
@@ -190,16 +195,11 @@ def collect_items(d, prefix=None):
                 )
             )
             continue
-        if (
-            not isinstance(obj, ROOT.TH1)
-            and not isinstance(obj, ROOT.TH3)
-            and not isinstance(obj, ROOT.TH2)
-            and not isinstance(obj, ROOT.TEfficiency)
-        ):
+        if not (cls.InheritsFrom("TH1") or cls.InheritsFrom("TEfficiency")):
             continue
+        obj = k.ReadObj()
         obj.SetDirectory(0)
         p = prefix or ""
-        #  print(prefix)
         ik = (
             p + dname + "__" + k.GetName() if (dname != "" and p != "") else k.GetName()
         )
@@ -292,28 +292,30 @@ def compare(config: Config, a: Path, b: Path, filters: List[str]) -> Comparison:
 
         #  print(configured_checks)
 
+        # Project TH2/TH3 once per item rather than once per check type — the
+        # ROOT Projection* calls are O(Nbins) and were previously repeated for
+        # every configured check.
+        projections = []
+        if isinstance(item_a, ROOT.TH3):
+            proj_names = ("ProjectionX", "ProjectionY", "ProjectionZ")
+        elif isinstance(item_a, ROOT.TH2):
+            proj_names = ("ProjectionX", "ProjectionY")
+        else:
+            proj_names = ()
+        for proj in proj_names:
+            proj_a = getattr(item_a, proj)().Clone()
+            proj_b = getattr(item_b, proj)().Clone()
+            proj_a.SetDirectory(0)
+            proj_b.SetDirectory(0)
+            projections.append((proj_a, proj_b, "p" + proj[-1]))
+
         for ctype, check_kw in configured_checks.items():
-            #  print(ctype, check_kw)
             subchecks = []
-            if isinstance(item_a, ROOT.TH3):
-                for proj in "ProjectionX", "ProjectionY", "ProjectionZ":
-                    proj_a = getattr(item_a, proj)().Clone()
-                    proj_b = getattr(item_b, proj)().Clone()
-                    proj_a.SetDirectory(0)
-                    proj_b.SetDirectory(0)
-                    subchecks.append(
-                        ctype(proj_a, proj_b, suffix="p" + proj[-1], **check_kw)
-                    )
-            if isinstance(item_a, ROOT.TH2):
-                for proj in "ProjectionX", "ProjectionY":
-                    proj_a = getattr(item_a, proj)().Clone()
-                    proj_b = getattr(item_b, proj)().Clone()
-                    proj_a.SetDirectory(0)
-                    proj_b.SetDirectory(0)
-                    subchecks.append(
-                        ctype(proj_a, proj_b, suffix="p" + proj[-1], **check_kw)
-                    )
-            else:
+            for proj_a, proj_b, sfx in projections:
+                subchecks.append(ctype(proj_a, proj_b, suffix=sfx, **check_kw))
+            # Preserve original behaviour: TH3 also gets a full-volume check,
+            # TH2 only gets projections, TH1 only gets the full-hist check.
+            if not isinstance(item_a, ROOT.TH2):
                 subchecks.append(ctype(item_a, item_b, **check_kw))
 
             dstyle = "strike"

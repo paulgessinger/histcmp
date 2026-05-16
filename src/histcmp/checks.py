@@ -311,17 +311,17 @@ class RatioCheck(CompatCheck):
             if isinstance(item_a, ROOT.TEfficiency):
                 a, a_err = convert_hist(item_a)
                 b, b_err = convert_hist(item_b)
-                ratio = a.values() / b.values()
+                a_vals = a.values()
+                b_vals = b.values()
 
                 a_err = 0.5 * (a_err[0] + a_err[1])
                 b_err = 0.5 * (b_err[0] + b_err[1])
 
+                self.ratio = a_vals / b_vals
                 self.ratio_err = numpy.sqrt(
-                    (a_err / b.values()) ** 2
-                    + (a.values() / b.values() ** 2 * b_err) ** 2
+                    (a_err / b_vals) ** 2
+                    + (a_vals / b_vals ** 2 * b_err) ** 2
                 )
-
-                self.ratio = a.values() / b.values()
                 self.applicable = True
 
             else:
