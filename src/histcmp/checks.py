@@ -17,6 +17,7 @@ from histcmp.root_helpers import (
     integralAndError,
     get_bin_content,
     get_bin_content_error,
+    is_unweighted_histogram,
     push_root_level,
     convert_hist,
     tefficiency_to_th1,
@@ -217,8 +218,14 @@ class Chi2Test(ScoreThresholdCheck):
 
     @functools.cached_property
     def _result_v(self):
+        # Pick the U/W mode that matches each histogram's fill semantics.
+        # Using "UU" against a weighted hist gives ROOT's
+        # "Both histograms are not unweighted" RuntimeWarning and a
+        # statistically wrong p-value.
+        opt_a = "U" if is_unweighted_histogram(self.item_a) else "W"
+        opt_b = "U" if is_unweighted_histogram(self.item_b) else "W"
         with push_root_level(ROOT.kWarning):
-            res = chi2TestX(self.item_a, self.item_b, "UUOFUF")
+            res = chi2TestX(self.item_a, self.item_b, opt_a + opt_b + "OFUF")
             return res
 
     @property
@@ -311,17 +318,17 @@ class RatioCheck(CompatCheck):
             if isinstance(item_a, ROOT.TEfficiency):
                 a, a_err = convert_hist(item_a)
                 b, b_err = convert_hist(item_b)
-                ratio = a.values() / b.values()
+                a_vals = a.values()
+                b_vals = b.values()
 
                 a_err = 0.5 * (a_err[0] + a_err[1])
                 b_err = 0.5 * (b_err[0] + b_err[1])
 
+                self.ratio = a_vals / b_vals
                 self.ratio_err = numpy.sqrt(
-                    (a_err / b.values()) ** 2
-                    + (a.values() / b.values() ** 2 * b_err) ** 2
+                    (a_err / b_vals) ** 2
+                    + (a_vals / b_vals ** 2 * b_err) ** 2
                 )
-
-                self.ratio = a.values() / b.values()
                 self.applicable = True
 
             else:

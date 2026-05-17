@@ -5,21 +5,17 @@ from dataclasses import dataclass, field
 import fnmatch
 import re
 
-import rich
 from rich.progress import track
 from rich.text import Text
-from rich.panel import Panel
-from matplotlib import pyplot
-import numpy
 
-from histcmp.console import console, fail, info, good, warn
+from histcmp.console import console, fail, warn
 from histcmp.root_helpers import (
     integralAndError,
     get_bin_content,
     convert_hist,
     tefficiency_to_th1,
 )
-from histcmp.plot import plot_ratio, plot_ratio_eff, plot_to_uri
+from histcmp.plot import PlotJob, render_plot_job
 from histcmp import icons
 import histcmp.checks
 from histcmp.github import is_github_actions, github_actions_marker
@@ -60,6 +56,38 @@ class ComparisonItem:
         return Status.INCONCLUSIVE
         #  raise RuntimeError("Shouldn't happen")
 
+    def build_plot_job(self) -> PlotJob:
+        """Extract every histogram needed for plotting into a picklable PlotJob.
+
+        Runs in the main process (it touches ROOT objects). The returned job
+        can be shipped to a worker for parallel matplotlib rendering.
+        """
+        job = PlotJob(key=self.key)
+
+        if isinstance(self.item_a, ROOT.TH3):
+            h_a = convert_hist(self.item_a)
+            h_b = convert_hist(self.item_b)
+            for proj, d in enumerate("XYZ"):
+                job.specs.append(("ratio", h_a.project(proj), h_b.project(proj), f"_p{d}"))
+        elif isinstance(self.item_a, ROOT.TH2):
+            h_a = convert_hist(self.item_a)
+            h_b = convert_hist(self.item_b)
+            for proj, d in enumerate("XY"):
+                job.specs.append(("ratio", h_a.project(proj), h_b.project(proj), f"_p{d}"))
+        elif isinstance(self.item_a, ROOT.TEfficiency):
+            a, a_err = convert_hist(self.item_a)
+            b, b_err = convert_hist(self.item_b)
+            job.specs.append(("eff", a, a_err, b, b_err))
+        elif isinstance(self.item_a, ROOT.TH1):
+            job.specs.append(
+                ("ratio", convert_hist(self.item_a), convert_hist(self.item_b), "")
+            )
+
+        return job
+
+    def set_plot_uris(self, uris):
+        self._generic_plots = list(uris)
+
     def ensure_plots(
         self,
         report_dir: Path,
@@ -68,75 +96,12 @@ class ComparisonItem:
         label_b: str,
         format: str,
     ):
-        figs = []
-
-        if isinstance(self.item_a, ROOT.TH3):
-            h2_a = convert_hist(self.item_a)
-            h2_b = convert_hist(self.item_b)
-
-            for proj in [0, 1, 2]:
-                h1_a = h2_a.project(proj)
-                h1_b = h2_b.project(proj)
-
-                fig, (ax, rax) = plot_ratio(h1_a, h1_b, label_a, label_b)
-
-                d = "XYZ"[proj]
-
-                figs.append((fig, f"_p{d}"))
-                #  mplhep.atlas.text("Simulation Internal", ax=ax, loc=1)
-
-        elif isinstance(self.item_a, ROOT.TH2):
-            h2_a = convert_hist(self.item_a)
-            h2_b = convert_hist(self.item_b)
-
-            for proj in [0, 1]:
-                h1_a = h2_a.project(proj)
-                h1_b = h2_b.project(proj)
-
-                fig, (ax, rax) = plot_ratio(h1_a, h1_b, label_a, label_b)
-
-                d = "XY"[proj]
-
-                figs.append((fig, f"_p{d}"))
-                #  mplhep.atlas.text("Simulation Internal", ax=ax, loc=1)
-
-        elif isinstance(self.item_a, ROOT.TEfficiency):
-            a, a_err = convert_hist(self.item_a)
-            b, b_err = convert_hist(self.item_b)
-
-            lowest = 0
-            largest = 1.015
-            nonzero = numpy.concatenate(
-                [a.values()[a.values() > 0], b.values()[b.values() > 0]]
-            )
-            if len(nonzero) > 0:
-                lowest = numpy.min(nonzero)
-                largest = numpy.max(nonzero)
-
-            fig, (ax, rax) = plot_ratio_eff(a, a_err, b, b_err, label_a, label_b)
-            figs.append((fig, ""))
-            ax.set_ylim(
-                bottom=lowest * 0.99,
-                top=largest * 1.008,
-            )
-            #  mplhep.atlas.text("Simulation Internal", ax=ax, loc=1)
-
-        elif isinstance(self.item_a, ROOT.TH1):
-            a = convert_hist(self.item_a)
-            b = convert_hist(self.item_b)
-            fig, (ax, rax) = plot_ratio(a, b, label_a, label_b)
-            figs.append((fig, ""))
-
-            #  mplhep.atlas.text("Simulation Internal", ax=ax, loc=1)
-
-        for fig, suffix in figs:
-            try:
-                self._generic_plots.append(plot_to_uri(fig))
-                if plot_dir is not None:
-                    safe_key = self.key.replace("/", "_") + suffix
-                    fig.savefig(plot_dir / f"{safe_key}.{format}")
-            except ValueError as e:
-                rich.print(f"ERROR during plot: {e}")
+        """Sequential fallback / single-item entry point. The parallel path in
+        make_report goes through build_plot_job + render_plot_job directly.
+        """
+        job = self.build_plot_job()
+        _, uris = render_plot_job(job, label_a, label_b, plot_dir, format)
+        self.set_plot_uris(uris)
 
     @property
     def first_plot_index(self):
@@ -180,9 +145,14 @@ def collect_items(d, prefix=None):
     if isinstance(d, ROOT.TFile):
         dname = ""
     for k in d.GetListOfKeys():
-        obj = k.ReadObj()
-        #  print(type(obj))
-        if isinstance(obj, ROOT.TDirectoryFile):
+        # Resolve the class from the key without deserializing the payload.
+        # ReadObj is expensive (decompress + stream), so skip it for objects
+        # we'd just discard (TGraph, TCanvas, TTree, ...).
+        cls = ROOT.TClass.GetClass(k.GetClassName())
+        if cls is None:
+            continue
+        if cls.InheritsFrom("TDirectoryFile"):
+            obj = k.ReadObj()
             items.update(
                 collect_items(
                     obj,
@@ -190,16 +160,11 @@ def collect_items(d, prefix=None):
                 )
             )
             continue
-        if (
-            not isinstance(obj, ROOT.TH1)
-            and not isinstance(obj, ROOT.TH3)
-            and not isinstance(obj, ROOT.TH2)
-            and not isinstance(obj, ROOT.TEfficiency)
-        ):
+        if not (cls.InheritsFrom("TH1") or cls.InheritsFrom("TEfficiency")):
             continue
+        obj = k.ReadObj()
         obj.SetDirectory(0)
         p = prefix or ""
-        #  print(prefix)
         ik = (
             p + dname + "__" + k.GetName() if (dname != "" and p != "") else k.GetName()
         )
@@ -292,28 +257,30 @@ def compare(config: Config, a: Path, b: Path, filters: List[str]) -> Comparison:
 
         #  print(configured_checks)
 
+        # Project TH2/TH3 once per item rather than once per check type — the
+        # ROOT Projection* calls are O(Nbins) and were previously repeated for
+        # every configured check.
+        projections = []
+        if isinstance(item_a, ROOT.TH3):
+            proj_names = ("ProjectionX", "ProjectionY", "ProjectionZ")
+        elif isinstance(item_a, ROOT.TH2):
+            proj_names = ("ProjectionX", "ProjectionY")
+        else:
+            proj_names = ()
+        for proj in proj_names:
+            proj_a = getattr(item_a, proj)().Clone()
+            proj_b = getattr(item_b, proj)().Clone()
+            proj_a.SetDirectory(0)
+            proj_b.SetDirectory(0)
+            projections.append((proj_a, proj_b, "p" + proj[-1]))
+
         for ctype, check_kw in configured_checks.items():
-            #  print(ctype, check_kw)
             subchecks = []
-            if isinstance(item_a, ROOT.TH3):
-                for proj in "ProjectionX", "ProjectionY", "ProjectionZ":
-                    proj_a = getattr(item_a, proj)().Clone()
-                    proj_b = getattr(item_b, proj)().Clone()
-                    proj_a.SetDirectory(0)
-                    proj_b.SetDirectory(0)
-                    subchecks.append(
-                        ctype(proj_a, proj_b, suffix="p" + proj[-1], **check_kw)
-                    )
-            if isinstance(item_a, ROOT.TH2):
-                for proj in "ProjectionX", "ProjectionY":
-                    proj_a = getattr(item_a, proj)().Clone()
-                    proj_b = getattr(item_b, proj)().Clone()
-                    proj_a.SetDirectory(0)
-                    proj_b.SetDirectory(0)
-                    subchecks.append(
-                        ctype(proj_a, proj_b, suffix="p" + proj[-1], **check_kw)
-                    )
-            else:
+            for proj_a, proj_b, sfx in projections:
+                subchecks.append(ctype(proj_a, proj_b, suffix=sfx, **check_kw))
+            # Preserve original behaviour: TH3 also gets a full-volume check,
+            # TH2 only gets projections, TH1 only gets the full-hist check.
+            if not isinstance(item_a, ROOT.TH2):
                 subchecks.append(ctype(item_a, item_b, **check_kw))
 
             dstyle = "strike"

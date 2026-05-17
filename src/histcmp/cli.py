@@ -91,11 +91,18 @@ def main(
         )
     ] = ".*",
     format: Annotated[
-        str, 
+        str,
         typer.Option(
             help="Output format for plots (pdf, png, etc.)"
         )
     ] = "pdf",
+    jobs: Annotated[
+        Optional[int],
+        typer.Option(
+            "-j", "--jobs",
+            help="Number of worker processes to render plots in parallel (default: auto)",
+        )
+    ] = None,
 ):
     try:
         import ROOT
@@ -232,7 +239,7 @@ def main(
         if output is not None:
             if plots is not None:
                 plots.mkdir(exist_ok=True, parents=True)
-            make_report(comparison, output, plots, format=format)
+            make_report(comparison, output, plots, format=format, n_workers=jobs)
 
         if status != Status.SUCCESS:
             raise typer.Exit(1)
