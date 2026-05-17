@@ -1,10 +1,19 @@
 import warnings
 import io
 import urllib.parse
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import List, Optional, Tuple, Union
 
-#  from abc import ABC, abstractmethod, abstractproperty
-#  from pathlib import Path
 import numpy
+
+# Force a non-interactive backend before pyplot is imported. On macOS the
+# default is the Cocoa backend, which spends ~30% of total runtime spinning up
+# an NSWindow we never display. The SVG backend used by savefig() is selected
+# per-call regardless of this setting.
+import matplotlib
+matplotlib.use("Agg")
+
 import mplhep
 
 import hist
@@ -186,3 +195,64 @@ def plot_to_uri(figure):
     data = svg_encode(data)
     datauri = f"data:image/svg+xml;utf8,{data}"
     return datauri
+
+
+# Picklable description of all plots to render for one ComparisonItem. Built in
+# the main process (which holds the ROOT objects), then shipped to a worker.
+@dataclass
+class PlotJob:
+    key: str
+    # Each spec is either:
+    #   ("ratio", hist_a, hist_b, suffix)         — plot_ratio over two hist.Hists
+    #   ("eff",   a, a_err, b, b_err)             — plot_ratio_eff over TEfficiency-derived data
+    specs: List[Tuple] = field(default_factory=list)
+
+
+def render_plot_job(
+    job: PlotJob,
+    label_a: str,
+    label_b: str,
+    plot_dir: Optional[Union[str, Path]],
+    format: str,
+) -> Tuple[str, List[str]]:
+    """Render every plot in `job` and return (key, list_of_svg_data_uris).
+
+    Safe to call from a worker process: touches only matplotlib + numpy +
+    hist, never ROOT. Closes each figure as it goes to keep memory flat.
+    """
+    plot_dir_path = Path(plot_dir) if plot_dir is not None else None
+    uris: List[str] = []
+    for spec in job.specs:
+        kind = spec[0]
+        suffix = ""
+        fig = None
+        try:
+            if kind == "ratio":
+                _, h_a, h_b, suffix = spec
+                fig, _ = plot_ratio(h_a, h_b, label_a, label_b)
+            elif kind == "eff":
+                _, a, a_err, b, b_err = spec
+                fig, (ax, _rax) = plot_ratio_eff(a, a_err, b, b_err, label_a, label_b)
+                nonzero = numpy.concatenate(
+                    [a.values()[a.values() > 0], b.values()[b.values() > 0]]
+                )
+                if len(nonzero) > 0:
+                    ax.set_ylim(
+                        bottom=float(numpy.min(nonzero)) * 0.99,
+                        top=float(numpy.max(nonzero)) * 1.008,
+                    )
+                else:
+                    ax.set_ylim(bottom=0.0, top=1.015 * 1.008)
+            else:
+                continue
+
+            uris.append(plot_to_uri(fig))
+            if plot_dir_path is not None:
+                safe_key = job.key.replace("/", "_") + suffix
+                fig.savefig(plot_dir_path / f"{safe_key}.{format}")
+        except ValueError as e:
+            print(f"ERROR during plot ({job.key}{suffix}): {e}")
+        finally:
+            if fig is not None:
+                pyplot.close(fig)
+    return job.key, uris
