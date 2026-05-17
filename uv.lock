@@ -442,7 +442,7 @@ plot = [
 
 [[package]]
 name = "histcmp"
-version = "0.9.0"
+version = "0.9.1"
 source = { editable = "." }
 dependencies = [
     { name = "hist", extra = ["plot"] },
@@ -470,7 +470,7 @@ requires-dist = [
     { name = "hist", extras = ["plot"], specifier = ">=2.8.0" },
     { name = "jinja2", specifier = ">=3.1.4" },
     { name = "matplotlib", specifier = ">=3.9.2" },
-    { name = "mplhep", specifier = ">=0.3.55,<1" },
+    { name = "mplhep", specifier = ">=1.0" },
     { name = "numpy", specifier = ">=2.1.3" },
     { name = "pydantic", specifier = ">=2.10.1" },
     { name = "pyyaml", specifier = ">=6.0.2" },
@@ -821,7 +821,7 @@ wheels = [
 
 [[package]]
 name = "mplhep"
-version = "0.4.1"
+version = "1.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "matplotlib" },
@@ -831,9 +831,9 @@ dependencies = [
     { name = "packaging" },
     { name = "uhi" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/81/54/6e784c4dcc7e3d37ed30dc5a65f2e7df3c466c33604bf48f055988111d2d/mplhep-0.4.1.tar.gz", hash = "sha256:86e2d99680bdb19598e847ff5b24f3bf1c63f164b99f076be98255acd738ee48", size = 1710115, upload-time = "2025-08-26T14:20:10.471Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b5/23/0228b7e314750cf51489caf938859571a180e1068fe7fddc428ded8cc48d/mplhep-1.2.0.tar.gz", hash = "sha256:68a0a70e19eaec52f8492b84630ae7801cad16e2b6e83e067a13267ef6112d42", size = 4302874, upload-time = "2026-05-14T09:19:25.587Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/56/2e/65c5d36ca640f0f5c8f6909f26e642d58c59d01459e3abe294700c73e169/mplhep-0.4.1-py3-none-any.whl", hash = "sha256:dd69db353b655393bbd49fc79b4b4878f9cf8aa4f4228d7448cdc124f53e675f", size = 50961, upload-time = "2025-08-26T14:20:08.61Z" },
+    { url = "https://files.pythonhosted.org/packages/a8/65/1970c40341d483be15c205e223cb04cd586bc6518c805d0e2f0bf7f55035/mplhep-1.2.0-py3-none-any.whl", hash = "sha256:237a16336918c4ec80c7b4b4de6c89c83cee2e9100a5dfe11c0b8e0b4afe019c", size = 98054, upload-time = "2026-05-14T09:19:23.545Z" },
 ]
 
 [[package]]

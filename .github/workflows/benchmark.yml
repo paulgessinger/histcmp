@@ -1,0 +1,52 @@
+name: benchmark
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  hyperfine:
+    name: hyperfine self-comparison
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -l {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up micromamba (provides ROOT)
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: histcmp
+          create-args: >-
+            python=3.12
+            root
+          condarc: |
+            channels:
+              - conda-forge
+
+      - name: Install hyperfine
+        run: |
+          HYPERFINE_VERSION=1.18.0
+          curl -fsSL -o hyperfine.deb \
+            "https://github.com/sharkdp/hyperfine/releases/download/v${HYPERFINE_VERSION}/hyperfine_${HYPERFINE_VERSION}_amd64.deb"
+          sudo dpkg -i hyperfine.deb
+          hyperfine --version
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Install histcmp
+        run: pip install .
+
+      - name: Benchmark self-comparison
+        run: |
+          just bench
+          cat bench-out/results.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hyperfine-results
+          path: bench-out/
