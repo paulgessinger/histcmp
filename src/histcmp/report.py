@@ -147,6 +147,9 @@ def make_report(
     format: str = "pdf",
     jobs: int = 1,
 ):
+    output.parent.mkdir(exist_ok=True, parents=True)
+    if plot_dir is not None:
+        plot_dir.mkdir(exist_ok=True, parents=True)
 
     #  copy_static(output)
 
