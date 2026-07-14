@@ -91,11 +91,20 @@ def main(
         )
     ] = ".*",
     format: Annotated[
-        str, 
+        str,
         typer.Option(
             help="Output format for plots (pdf, png, etc.)"
         )
     ] = "pdf",
+    projections: Annotated[
+        bool,
+        typer.Option(
+            "--projections/--no-projections",
+            help="Compare projection items (TH2 / TH3 / TProfile2D / TProfile3D, "
+            "compared via their 1D projections). Disabling this skips these items "
+            "entirely, which can speed up the comparison considerably"
+        )
+    ] = True,
 ):
     try:
         import ROOT
@@ -138,7 +147,9 @@ def main(
                 filters = fh.read().strip().split("\n")
         else:
             filters = [_filter]
-        comparison = compare(config, monitored, reference, filters=filters)
+        comparison = compare(
+            config, monitored, reference, filters=filters, projections=projections
+        )
 
         comparison.label_monitored = label_monitored
         comparison.label_reference = label_reference

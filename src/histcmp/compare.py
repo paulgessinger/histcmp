@@ -174,6 +174,18 @@ def can_handle_item(item) -> bool:
     return False
 
 
+def is_projection_item(item) -> bool:
+    """
+    Items that are not compared directly but through their 1D projections.
+    TProfile2D / TProfile3D inherit from TH2 / TH3 and are listed explicitly
+    for clarity. Plain TProfile is one-dimensional and compared directly, so
+    it is not included.
+    """
+    return isinstance(
+        item, (ROOT.TH2, ROOT.TH3, ROOT.TProfile2D, ROOT.TProfile3D)
+    )
+
+
 def collect_items(d, prefix=None):
     items = {}
     dname = d.GetName()
@@ -207,7 +219,13 @@ def collect_items(d, prefix=None):
     return items
 
 
-def compare(config: Config, a: Path, b: Path, filters: List[str]) -> Comparison:
+def compare(
+    config: Config,
+    a: Path,
+    b: Path,
+    filters: List[str],
+    projections: bool = True,
+) -> Comparison:
     rf_a = ROOT.TFile.Open(str(a))
     rf_b = ROOT.TFile.Open(str(b))
 
@@ -262,6 +280,10 @@ def compare(config: Config, a: Path, b: Path, filters: List[str]) -> Comparison:
             result.a_only.add(key)
 
         console.rule(f"{key} ({item_a.__class__.__name__})")
+
+        if not projections and is_projection_item(item_a):
+            info(f"Skipping projection item {key}")
+            continue
 
         if not can_handle_item(item_a):
             warn(f"Unable to handle item of type {type(item_a)}")
