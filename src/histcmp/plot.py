@@ -515,12 +515,6 @@ def plot_to_uri(figure, raster: bool = False):
     return datauri
 
 
-def init_render_worker():
-    import matplotlib
-
-    matplotlib.use("Agg", force=True)
-
-
 def render_plots(specs, key, label_a, label_b, plot_dir, format: str):
     """
     Render the plot specs produced by ComparisonItem.plot_specs and return the

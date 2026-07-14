@@ -60,52 +60,7 @@ class ComparisonItem:
         #  raise RuntimeError("Shouldn't happen")
 
     def plot_specs(self):
-        """
-        Build the picklable plot specifications for this item. This converts
-        the ROOT objects into plain numpy backed histograms, so the result can
-        be shipped to a worker process for rendering with
-        histcmp.plot.render_plots.
-        """
-        specs = []
-
-        if isinstance(self.item_a, ROOT.TH3):
-            specs.append(
-                PlotSpec(
-                    "3d",
-                    convert_hist(self.item_a),
-                    convert_hist(self.item_b),
-                    renderer=self.plots.renderer_3d,
-                    comparison=self.plots.effective_comparison_2d3d,
-                )
-            )
-
-        elif isinstance(self.item_a, ROOT.TH2):
-            specs.append(
-                PlotSpec(
-                    "2d",
-                    convert_hist(self.item_a),
-                    convert_hist(self.item_b),
-                    comparison=self.plots.effective_comparison_2d3d,
-                )
-            )
-
-        elif isinstance(self.item_a, ROOT.TEfficiency):
-            a, a_err = convert_hist(self.item_a)
-            b, b_err = convert_hist(self.item_b)
-
-            specs.append(PlotSpec("eff", a, b, err_a=a_err, err_b=b_err))
-
-        elif isinstance(self.item_a, ROOT.TH1):
-            specs.append(
-                PlotSpec(
-                    "1d",
-                    convert_hist(self.item_a),
-                    convert_hist(self.item_b),
-                    comparison=self.plots.comparison,
-                )
-            )
-
-        return specs
+        return build_plot_specs(self.item_a, self.item_b, self.plots)
 
     def ensure_plots(
         self,
@@ -115,6 +70,9 @@ class ComparisonItem:
         label_b: str,
         format: str,
     ):
+        if self._generic_plots:
+            # already rendered, e.g. by a worker process during compare()
+            return
         self._generic_plots = render_plots(
             self.plot_specs(), self.key, label_a, label_b, plot_dir, format
         )
@@ -155,37 +113,161 @@ def can_handle_item(item) -> bool:
     return False
 
 
-def collect_items(d, prefix=None):
+def build_plot_specs(item_a, item_b, plots: PlotConfig):
+    """
+    Build the picklable plot specifications for an item. This converts the
+    ROOT objects into plain numpy backed histograms, so the result can be
+    shipped across process boundaries and rendered with
+    histcmp.plot.render_plots.
+    """
+    specs = []
+
+    if isinstance(item_a, ROOT.TH3):
+        specs.append(
+            PlotSpec(
+                "3d",
+                convert_hist(item_a),
+                convert_hist(item_b),
+                renderer=plots.renderer_3d,
+                comparison=plots.effective_comparison_2d3d,
+            )
+        )
+
+    elif isinstance(item_a, ROOT.TH2):
+        specs.append(
+            PlotSpec(
+                "2d",
+                convert_hist(item_a),
+                convert_hist(item_b),
+                comparison=plots.effective_comparison_2d3d,
+            )
+        )
+
+    elif isinstance(item_a, ROOT.TEfficiency):
+        a, a_err = convert_hist(item_a)
+        b, b_err = convert_hist(item_b)
+
+        specs.append(PlotSpec("eff", a, b, err_a=a_err, err_b=b_err))
+
+    elif isinstance(item_a, ROOT.TH1):
+        specs.append(
+            PlotSpec(
+                "1d",
+                convert_hist(item_a),
+                convert_hist(item_b),
+                comparison=plots.comparison,
+            )
+        )
+
+    return specs
+
+
+def collect_items(d, prefix=None, lazy=False, dirpath=""):
+    """
+    Collect the histogram-like objects of a file, keyed by flattened name.
+
+    With lazy=True nothing but directories is read from the file: the values
+    are (classname, path-within-file) tuples instead of the objects, so
+    worker processes can read the objects themselves via TFile.Get(path).
+    """
     items = {}
     dname = d.GetName()
     if isinstance(d, ROOT.TFile):
         dname = ""
     for k in d.GetListOfKeys():
-        obj = k.ReadObj()
-        #  print(type(obj))
-        if isinstance(obj, ROOT.TDirectoryFile):
+        tclass = ROOT.TClass.GetClass(k.GetClassName())
+        if tclass is None:
+            continue
+        if tclass.InheritsFrom("TDirectoryFile"):
             items.update(
                 collect_items(
-                    obj,
+                    k.ReadObj(),
                     prefix + dname + k.GetName() + "__" if prefix is not None else "",
+                    lazy=lazy,
+                    dirpath=dirpath + k.GetName() + "/",
                 )
             )
             continue
-        if (
-            not isinstance(obj, ROOT.TH1)
-            and not isinstance(obj, ROOT.TH3)
-            and not isinstance(obj, ROOT.TH2)
-            and not isinstance(obj, ROOT.TEfficiency)
-        ):
+        if not tclass.InheritsFrom("TH1") and not tclass.InheritsFrom("TEfficiency"):
             continue
-        obj.SetDirectory(0)
         p = prefix or ""
         #  print(prefix)
         ik = (
             p + dname + "__" + k.GetName() if (dname != "" and p != "") else k.GetName()
         )
-        items[ik] = obj
+        if lazy:
+            items[ik] = (k.GetClassName(), dirpath + k.GetName())
+        else:
+            obj = k.ReadObj()
+            obj.SetDirectory(0)
+            items[ik] = obj
     return items
+
+
+def build_checks(config_checks: dict, key: str, item_a, item_b) -> List[CompatCheck]:
+    configured_checks = {}
+    for pattern, checks in config_checks.items():
+        if not fnmatch.fnmatch(key, pattern):
+            continue
+
+        #  print(key, pattern, "matches")
+
+        for cname, check_kw in checks.items():
+            ctype = getattr(histcmp.checks, cname)
+            if ctype not in configured_checks:
+                if check_kw is not None:
+                    configured_checks[ctype] = check_kw.copy()
+            else:
+                #  print("Modifying", cname)
+                if check_kw is None:
+                    #  print("-> setting disabled")
+                    configured_checks[ctype].update({"disabled": True})
+                else:
+                    #  print("-> updating kw")
+                    configured_checks[ctype].update(check_kw)
+
+    #  print(configured_checks)
+
+    return [
+        ctype(item_a, item_b, **check_kw)
+        for ctype, check_kw in configured_checks.items()
+    ]
+
+
+def report_item_console(key: str, checks):
+    dstyle = "strike"
+    for inst in checks:
+        if inst.is_applicable:
+            if inst.is_valid:
+                console.print(
+                    icons.success,
+                    Text(
+                        str(inst),
+                        style="bold green" if not inst.is_disabled else dstyle,
+                    ),
+                    inst.label,
+                )
+            else:
+                if is_github_actions and not inst.is_disabled:
+                    print(
+                        github_actions_marker(
+                            "error",
+                            key + ": " + str(inst) + "\n" + inst.label,
+                        )
+                    )
+                console.print(
+                    icons.failure,
+                    Text(
+                        str(inst),
+                        style="bold red" if not inst.is_disabled else dstyle,
+                    ),
+                    inst.label,
+                )
+        else:
+            console.print(icons.inconclusive, inst, style="yellow")
+
+    if all(c.status == Status.INCONCLUSIVE for c in checks):
+        print(github_actions_marker("warning", key + ": has no applicable checks"))
 
 
 def compare(
@@ -195,12 +277,17 @@ def compare(
     filters: List[str],
     enable_2d: bool = True,
     enable_3d: bool = True,
+    jobs: int = 1,
+    label_monitored: Optional[str] = None,
+    label_reference: Optional[str] = None,
+    plot_dir: Optional[Path] = None,
+    format: str = "pdf",
 ) -> Comparison:
     rf_a = ROOT.TFile.Open(str(a))
     rf_b = ROOT.TFile.Open(str(b))
 
-    key_map_a = collect_items(rf_a)
-    key_map_b = collect_items(rf_b)
+    key_map_a = collect_items(rf_a, lazy=jobs > 1)
+    key_map_b = collect_items(rf_b, lazy=jobs > 1)
 
     keys_a = set(key_map_a.keys())
     keys_b = set(key_map_b.keys())
@@ -234,6 +321,27 @@ def compare(
 
     result = Comparison(file_a=str(a), file_b=str(b))
 
+    if jobs > 1:
+        _compare_parallel(
+            result,
+            config,
+            common,
+            key_map_a,
+            key_map_b,
+            enable_2d,
+            enable_3d,
+            jobs,
+            label_monitored,
+            label_reference,
+            plot_dir,
+            format,
+        )
+        result.b_only = {(k, key_map_b[k][0]) for k in (keys_b - keys_a)}
+        result.a_only = {(k, key_map_a[k][0]) for k in (keys_a - keys_b)}
+        result.common = {(k, key_map_a[k][0]) for k in common}
+
+        return result
+
     for key in track(sorted(common), console=console, description="Comparing..."):
         item_a = key_map_a[key]
         item_b = key_map_b[key]
@@ -266,72 +374,102 @@ def compare(
         item = ComparisonItem(
             key=key, item_a=item_a, item_b=item_b, plots=config.plots
         )
-
-        configured_checks = {}
-        for pattern, checks in config.checks.items():
-            if not fnmatch.fnmatch(key, pattern):
-                continue
-
-            #  print(key, pattern, "matches")
-
-            for cname, check_kw in checks.items():
-                ctype = getattr(histcmp.checks, cname)
-                if ctype not in configured_checks:
-                    if check_kw is not None:
-                        configured_checks[ctype] = check_kw.copy()
-                else:
-                    #  print("Modifying", cname)
-                    if check_kw is None:
-                        #  print("-> setting disabled")
-                        configured_checks[ctype].update({"disabled": True})
-                    else:
-                        #  print("-> updating kw")
-                        configured_checks[ctype].update(check_kw)
-
-        #  print(configured_checks)
-
-        dstyle = "strike"
-        for ctype, check_kw in configured_checks.items():
-            #  print(ctype, check_kw)
-            inst = ctype(item_a, item_b, **check_kw)
-
-            item.checks.append(inst)
-            if inst.is_applicable:
-                if inst.is_valid:
-                    console.print(
-                        icons.success,
-                        Text(
-                            str(inst),
-                            style="bold green" if not inst.is_disabled else dstyle,
-                        ),
-                        inst.label,
-                    )
-                else:
-                    if is_github_actions and not inst.is_disabled:
-                        print(
-                            github_actions_marker(
-                                "error",
-                                key + ": " + str(inst) + "\n" + inst.label,
-                            )
-                        )
-                    console.print(
-                        icons.failure,
-                        Text(
-                            str(inst),
-                            style="bold red" if not inst.is_disabled else dstyle,
-                        ),
-                        inst.label,
-                    )
-            else:
-                console.print(icons.inconclusive, inst, style="yellow")
+        item.checks = build_checks(config.checks, key, item_a, item_b)
+        report_item_console(key, item.checks)
 
         result.items.append(item)
-
-        if all(c.status == Status.INCONCLUSIVE for c in item.checks):
-            print(github_actions_marker("warning", key + ": has no applicable checks"))
 
     result.b_only = {(k, rf_b.Get(k).__class__.__name__) for k in (keys_b - keys_a)}
     result.a_only = {(k, rf_a.Get(k).__class__.__name__) for k in (keys_a - keys_b)}
     result.common = {(k, rf_a.Get(k).__class__.__name__) for k in common}
 
     return result
+
+
+def _compare_parallel(
+    result: Comparison,
+    config: Config,
+    common: set,
+    key_map_a: dict,
+    key_map_b: dict,
+    enable_2d: bool,
+    enable_3d: bool,
+    jobs: int,
+    label_monitored: Optional[str],
+    label_reference: Optional[str],
+    plot_dir: Optional[Path],
+    format: str,
+):
+    """
+    Compare the common items by scheduling them by name onto worker processes
+    which read the objects from the files themselves, run the checks and
+    render the plots (see histcmp.worker). The main process only prints the
+    results and assembles the comparison items from the returned summaries.
+    """
+    from concurrent.futures import ProcessPoolExecutor, as_completed
+
+    from histcmp.worker import init_worker, process_item
+
+    with ProcessPoolExecutor(
+        max_workers=jobs,
+        initializer=init_worker,
+        initargs=(
+            result.file_a,
+            result.file_b,
+            config,
+            label_monitored,
+            label_reference,
+            plot_dir,
+            format,
+        ),
+    ) as executor:
+        futures = {}
+        for key in sorted(common):
+            cls_a, path_a = key_map_a[key]
+            cls_b, path_b = key_map_b[key]
+
+            if cls_a != cls_b:
+                console.rule(f"{key}")
+                fail(
+                    f"Type mismatch between files for key {key}: {cls_a} != {cls_b} => treating as both removed and newly added"
+                )
+                result.a_only.add(key)
+
+            tclass = ROOT.TClass.GetClass(cls_a)
+            # note: TH3 does not inherit from TH2, so the order doesn't matter
+            if not enable_3d and tclass.InheritsFrom("TH3"):
+                console.rule(f"{key} ({cls_a})")
+                info(f"Skipping 3D item {key}")
+                continue
+            if not enable_2d and tclass.InheritsFrom("TH2"):
+                console.rule(f"{key} ({cls_a})")
+                info(f"Skipping 2D item {key}")
+                continue
+
+            futures[executor.submit(process_item, key, path_a, path_b)] = key
+
+        results = {}
+        for future in track(
+            as_completed(futures),
+            total=len(futures),
+            description="Comparing...",
+            console=console,
+        ):
+            results[futures[future]] = future.result()
+
+    for key in sorted(results):
+        cls_a, _ = key_map_a[key]
+        console.rule(f"{key} ({cls_a})")
+
+        if results[key] is None:
+            warn(f"Unable to handle item of type {cls_a}")
+            continue
+
+        checks, plots = results[key]
+
+        item = ComparisonItem(key=key, item_a=None, item_b=None, plots=config.plots)
+        item.checks = checks
+        item._generic_plots = plots
+        report_item_console(key, item.checks)
+
+        result.items.append(item)

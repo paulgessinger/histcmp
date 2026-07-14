@@ -1,10 +1,8 @@
-from collections import deque
 from datetime import datetime
 from pathlib import Path
 import shutil
 from typing import Union, Optional
 import contextlib
-from concurrent.futures import ProcessPoolExecutor
 import re
 from rich.progress import track
 from rich.emoji import Emoji
@@ -14,7 +12,6 @@ import jinja2
 from histcmp.compare import Comparison
 from histcmp.checks import Status
 from histcmp.console import console
-from histcmp.plot import init_render_worker, render_plots
 from histcmp.root_helpers import push_root_level
 from histcmp import icons
 
@@ -145,7 +142,6 @@ def make_report(
     output: Path,
     plot_dir: Optional[Path] = None,
     format: str = "pdf",
-    jobs: int = 1,
 ):
     output.parent.mkdir(exist_ok=True, parents=True)
     if plot_dir is not None:
@@ -157,54 +153,17 @@ def make_report(
 
     import ROOT
 
-    if jobs == 1:
-        with push_root_level(ROOT.kWarning):
-            for item in track(
-                comparison.items, description="Making plots", console=console
-            ):
-                item.ensure_plots(
-                    output,
-                    plot_dir,
-                    comparison.label_monitored,
-                    comparison.label_reference,
-                    format=format,
-                )
-    else:
-        # The ROOT objects held by the comparison items cannot be pickled, so
-        # each item is converted to plain histograms just before its rendering
-        # is dispatched to the worker processes. Keeping only a bounded number
-        # of futures outstanding caps memory at O(jobs) in-flight items while
-        # the conversion overlaps with the rendering in the workers.
-        queue = deque()
-
-        def drain(limit: int):
-            while len(queue) > limit:
-                future, item = queue.popleft()
-                item._generic_plots = future.result()
-
-        with ProcessPoolExecutor(
-            max_workers=jobs, initializer=init_render_worker
-        ) as executor:
-            with push_root_level(ROOT.kWarning):
-                for item in track(
-                    comparison.items, description="Making plots", console=console
-                ):
-                    queue.append(
-                        (
-                            executor.submit(
-                                render_plots,
-                                item.plot_specs(),
-                                item.key,
-                                comparison.label_monitored,
-                                comparison.label_reference,
-                                plot_dir,
-                                format,
-                            ),
-                            item,
-                        )
-                    )
-                    drain(4 * jobs)
-            drain(0)
+    with push_root_level(ROOT.kWarning):
+        for item in track(
+            comparison.items, description="Making plots", console=console
+        ):
+            item.ensure_plots(
+                output,
+                plot_dir,
+                comparison.label_monitored,
+                comparison.label_reference,
+                format=format,
+            )
 
     with output.open("w") as fh:
         fh.write(env.get_template("main.html.j2").render(comparison=comparison))

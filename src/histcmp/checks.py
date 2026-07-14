@@ -2,6 +2,7 @@ import numpy
 import operator
 from abc import ABC, abstractmethod, abstractproperty
 import collections
+import dataclasses
 from pathlib import Path
 import ctypes
 import functools
@@ -102,6 +103,40 @@ class CompatCheck(ABC):
     @abstractproperty
     def name(self) -> str:
         raise NotImplementedError()
+
+    def __str__(self) -> str:
+        return self.name
+
+    def __reduce__(self):
+        # Checks hold ROOT histograms, which cannot be pickled. Crossing a
+        # process boundary therefore turns a check into its CheckSummary,
+        # which exposes the same attributes the console output, the report
+        # template and the status aggregation use. bool() matches the
+        # truthiness semantics of the serial path (ResidualCheck.is_applicable
+        # is a method, not a property, and is truthy wherever it is consumed).
+        applicable = bool(self.is_applicable)
+        return (
+            CheckSummary,
+            (
+                str(self),
+                self.status,
+                applicable,
+                bool(self.is_valid) if applicable else False,
+                bool(self.is_disabled),
+                self.label if applicable else "",
+            ),
+        )
+
+
+@dataclasses.dataclass
+class CheckSummary:
+    name: str
+    status: Status
+    is_applicable: bool
+    is_valid: bool
+    is_disabled: bool
+    label: str
+    plot: Optional[Path] = None
 
     def __str__(self) -> str:
         return self.name
