@@ -1,9 +1,10 @@
+from collections import deque
 from datetime import datetime
 from pathlib import Path
 import shutil
 from typing import Union, Optional
 import contextlib
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor
 import re
 from rich.progress import track
 from rich.emoji import Emoji
@@ -167,33 +168,40 @@ def make_report(
                 )
     else:
         # The ROOT objects held by the comparison items cannot be pickled, so
-        # they are converted to plain histograms here before the actual
-        # matplotlib rendering is dispatched to the worker processes.
-        with push_root_level(ROOT.kWarning):
-            specs = [item.plot_specs() for item in comparison.items]
+        # each item is converted to plain histograms just before its rendering
+        # is dispatched to the worker processes. Keeping only a bounded number
+        # of futures outstanding caps memory at O(jobs) in-flight items while
+        # the conversion overlaps with the rendering in the workers.
+        queue = deque()
+
+        def drain(limit: int):
+            while len(queue) > limit:
+                future, item = queue.popleft()
+                item._generic_plots = future.result()
 
         with ProcessPoolExecutor(
             max_workers=jobs, initializer=init_render_worker
         ) as executor:
-            futures = {
-                executor.submit(
-                    render_plots,
-                    spec,
-                    item.key,
-                    comparison.label_monitored,
-                    comparison.label_reference,
-                    plot_dir,
-                    format,
-                ): item
-                for item, spec in zip(comparison.items, specs)
-            }
-            for future in track(
-                as_completed(futures),
-                total=len(futures),
-                description="Making plots",
-                console=console,
-            ):
-                futures[future]._generic_plots = future.result()
+            with push_root_level(ROOT.kWarning):
+                for item in track(
+                    comparison.items, description="Making plots", console=console
+                ):
+                    queue.append(
+                        (
+                            executor.submit(
+                                render_plots,
+                                item.plot_specs(),
+                                item.key,
+                                comparison.label_monitored,
+                                comparison.label_reference,
+                                plot_dir,
+                                format,
+                            ),
+                            item,
+                        )
+                    )
+                    drain(4 * jobs)
+            drain(0)
 
     with output.open("w") as fh:
         fh.write(env.get_template("main.html.j2").render(comparison=comparison))
