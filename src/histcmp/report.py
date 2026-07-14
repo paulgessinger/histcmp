@@ -13,6 +13,7 @@ import jinja2
 from histcmp.compare import Comparison
 from histcmp.checks import Status
 from histcmp.console import console
+from histcmp.plot import init_render_worker, render_plots
 from histcmp.root_helpers import push_root_level
 from histcmp import icons
 
@@ -143,6 +144,7 @@ def make_report(
     output: Path,
     plot_dir: Optional[Path] = None,
     format: str = "pdf",
+    jobs: int = 1,
 ):
 
     #  copy_static(output)
@@ -151,19 +153,47 @@ def make_report(
 
     import ROOT
 
-    with push_root_level(ROOT.kWarning):
-        for item in track(
-            comparison.items, description="Making plots", console=console
-        ):
-            p = item.ensure_plots(
-                output,
-                plot_dir,
-                comparison.label_monitored,
-                comparison.label_reference,
-                format=format,
-            )
-            if p is not None:
-                console.print(p)
+    if jobs == 1:
+        with push_root_level(ROOT.kWarning):
+            for item in track(
+                comparison.items, description="Making plots", console=console
+            ):
+                item.ensure_plots(
+                    output,
+                    plot_dir,
+                    comparison.label_monitored,
+                    comparison.label_reference,
+                    format=format,
+                )
+    else:
+        # The ROOT objects held by the comparison items cannot be pickled, so
+        # they are converted to plain histograms here before the actual
+        # matplotlib rendering is dispatched to the worker processes.
+        with push_root_level(ROOT.kWarning):
+            specs = [item.plot_specs() for item in comparison.items]
+
+        with ProcessPoolExecutor(
+            max_workers=jobs, initializer=init_render_worker
+        ) as executor:
+            futures = {
+                executor.submit(
+                    render_plots,
+                    spec,
+                    item.key,
+                    comparison.label_monitored,
+                    comparison.label_reference,
+                    plot_dir,
+                    format,
+                ): item
+                for item, spec in zip(comparison.items, specs)
+            }
+            for future in track(
+                as_completed(futures),
+                total=len(futures),
+                description="Making plots",
+                console=console,
+            ):
+                futures[future]._generic_plots = future.result()
 
     with output.open("w") as fh:
         fh.write(env.get_template("main.html.j2").render(comparison=comparison))
