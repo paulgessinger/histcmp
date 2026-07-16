@@ -48,54 +48,60 @@ def integralAndError(item) -> Tuple[float, float]:
         raise TypeError(f"Invalid type {type(item)}")
 
 
-def get_bin_content_error(item) -> numpy.array:
+def _bin_shape(item):
     if isinstance(item, ROOT.TH3):
-        out = numpy.zeros(
-            (
-                item.GetXaxis().GetNbins(),
-                item.GetYaxis().GetNbins(),
-                item.GetZaxis().GetNbins(),
-            )
-        )
-        err = numpy.zeros(
-            (
-                item.GetXaxis().GetNbins(),
-                item.GetYaxis().GetNbins(),
-                item.GetZaxis().GetNbins(),
-            )
-        )
-
-        for i in range(out.shape[0]):
-            for j in range(out.shape[1]):
-                for k in range(out.shape[2]):
-                    out[i][j][k] = item.GetBinContent(i + 1, j + 1, k + 1)
-                    err[i][j][k] = item.GetBinError(i + 1, j + 1, k + 1)
-
-        return out, err
+        return (item.GetNbinsX(), item.GetNbinsY(), item.GetNbinsZ())
     elif isinstance(item, ROOT.TH2):
-        out = numpy.zeros((item.GetXaxis().GetNbins(), item.GetYaxis().GetNbins()))
-        err = numpy.zeros((item.GetXaxis().GetNbins(), item.GetYaxis().GetNbins()))
-
-        for i in range(out.shape[0]):
-            for j in range(out.shape[1]):
-                out[i][j] = item.GetBinContent(i + 1, j + 1)
-                err[i][j] = item.GetBinError(i + 1, j + 1)
-
-        return out, err
+        return (item.GetNbinsX(), item.GetNbinsY())
     elif isinstance(item, ROOT.TH1):
-        return (
-            numpy.array(
-                [
-                    item.GetBinContent(b)
-                    for b in range(1, item.GetXaxis().GetNbins() + 1)
-                ]
-            ),
-            numpy.array(
-                [item.GetBinError(b) for b in range(1, item.GetXaxis().GetNbins() + 1)]
-            ),
-        )
+        return (item.GetNbinsX(),)
     else:
         raise TypeError(f"Invalid type {type(item)}")
+
+
+def _get_bin_content_error_loop(item) -> Tuple[numpy.ndarray, numpy.ndarray]:
+    shape = _bin_shape(item)
+    out = numpy.zeros(shape)
+    err = numpy.zeros(shape)
+
+    for idx in numpy.ndindex(shape):
+        root_bin = tuple(i + 1 for i in idx)
+        out[idx] = item.GetBinContent(*root_bin)
+        err[idx] = item.GetBinError(*root_bin)
+
+    return out, err
+
+
+def get_bin_content_error(item) -> Tuple[numpy.ndarray, numpy.ndarray]:
+    """
+    Bin contents and errors as N-D numpy arrays, without under/overflow bins.
+    """
+    if isinstance(item, (ROOT.TProfile, ROOT.TProfile2D, ROOT.TProfile3D)):
+        # for profiles the raw buffer holds weighted sums, not the profiled
+        # means that GetBinContent returns, so go through the per-bin API
+        return _get_bin_content_error_loop(item)
+
+    shape = _bin_shape(item)
+    # the flat buffer includes under/overflow bins and runs fastest along x:
+    # global bin = x + (nx+2) * (y + (ny+2) * z)
+    buf_shape = tuple(n + 2 for n in reversed(shape))
+
+    arr = item.GetArray()
+    arr.reshape((item.GetSize(),))
+    core = tuple(slice(1, -1) for _ in shape)
+    out = numpy.array(arr, dtype=numpy.float64).reshape(buf_shape).T[core]
+
+    sumw2 = item.GetSumw2()
+    if sumw2.GetSize() > 0:
+        w2 = sumw2.GetArray()
+        w2.reshape((sumw2.GetSize(),))
+        err = numpy.sqrt(
+            numpy.array(w2, dtype=numpy.float64).reshape(buf_shape).T[core]
+        )
+    else:
+        err = numpy.sqrt(numpy.abs(out))
+
+    return out, err
 
 
 def _process_axis_title(s):
