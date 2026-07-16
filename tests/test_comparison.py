@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import pytest
-import click
+import typer
 
 import histcmp.cli
 
@@ -11,7 +11,7 @@ def test_comparison_ckf_main():
     assert monitored.exists(), f"File {monitored} does not exist"
     assert reference.exists(), f"File {reference} does not exist"
 
-    with pytest.raises(click.exceptions.Exit):
+    with pytest.raises(typer.Exit):
         histcmp.cli.main(monitored, reference)
 
     histcmp.cli.main(monitored, monitored)

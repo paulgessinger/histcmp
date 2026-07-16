@@ -10,13 +10,8 @@ from rich.text import Text
 from rich.panel import Panel
 
 from histcmp.console import console, fail, info, good, warn
-from histcmp.root_helpers import (
-    integralAndError,
-    get_bin_content,
-    convert_hist,
-    tefficiency_to_th1,
-)
-from histcmp.plot import render_plots
+from histcmp.root_helpers import convert_hist
+from histcmp.plot import render_plots, PlotSpec
 from histcmp import icons
 import histcmp.checks
 from histcmp.github import is_github_actions, github_actions_marker
@@ -26,7 +21,7 @@ from histcmp.checks import (
     CompositeCheck,
     Status,
 )
-from histcmp.config import Config
+from histcmp.config import Config, PlotConfig
 
 import ROOT
 
@@ -37,10 +32,17 @@ class ComparisonItem:
     item_b: Any
     checks: List[CompatCheck]
 
-    def __init__(self, key: str, item_a, item_b):
+    def __init__(
+        self,
+        key: str,
+        item_a,
+        item_b,
+        plots: Optional[PlotConfig] = None,
+    ):
         self.key = key
         self.item_a = item_a
         self.item_b = item_b
+        self.plots = plots if plots is not None else PlotConfig()
         self._generic_plots = []
         self.checks = []
 
@@ -67,34 +69,40 @@ class ComparisonItem:
         specs = []
 
         if isinstance(self.item_a, ROOT.TH3):
-            h3_a = convert_hist(self.item_a)
-            h3_b = convert_hist(self.item_b)
-
-            for proj in [0, 1, 2]:
-                d = "XYZ"[proj]
-                specs.append(
-                    ("ratio", h3_a.project(proj), h3_b.project(proj), f"_p{d}")
+            specs.append(
+                PlotSpec(
+                    "3d",
+                    convert_hist(self.item_a),
+                    convert_hist(self.item_b),
+                    renderer=self.plots.renderer_3d,
+                    comparison=self.plots.effective_comparison_2d3d,
                 )
+            )
 
         elif isinstance(self.item_a, ROOT.TH2):
-            h2_a = convert_hist(self.item_a)
-            h2_b = convert_hist(self.item_b)
-
-            for proj in [0, 1]:
-                d = "XY"[proj]
-                specs.append(
-                    ("ratio", h2_a.project(proj), h2_b.project(proj), f"_p{d}")
+            specs.append(
+                PlotSpec(
+                    "2d",
+                    convert_hist(self.item_a),
+                    convert_hist(self.item_b),
+                    comparison=self.plots.effective_comparison_2d3d,
                 )
+            )
 
         elif isinstance(self.item_a, ROOT.TEfficiency):
             a, a_err = convert_hist(self.item_a)
             b, b_err = convert_hist(self.item_b)
 
-            specs.append(("eff", a, a_err, b, b_err, ""))
+            specs.append(PlotSpec("eff", a, b, err_a=a_err, err_b=b_err))
 
         elif isinstance(self.item_a, ROOT.TH1):
             specs.append(
-                ("ratio", convert_hist(self.item_a), convert_hist(self.item_b), "")
+                PlotSpec(
+                    "1d",
+                    convert_hist(self.item_a),
+                    convert_hist(self.item_b),
+                    comparison=self.plots.comparison,
+                )
             )
 
         return specs
@@ -180,7 +188,14 @@ def collect_items(d, prefix=None):
     return items
 
 
-def compare(config: Config, a: Path, b: Path, filters: List[str]) -> Comparison:
+def compare(
+    config: Config,
+    a: Path,
+    b: Path,
+    filters: List[str],
+    enable_2d: bool = True,
+    enable_3d: bool = True,
+) -> Comparison:
     rf_a = ROOT.TFile.Open(str(a))
     rf_b = ROOT.TFile.Open(str(b))
 
@@ -236,11 +251,21 @@ def compare(config: Config, a: Path, b: Path, filters: List[str]) -> Comparison:
 
         console.rule(f"{key} ({item_a.__class__.__name__})")
 
+        # note: TH3 does not inherit from TH2, so the order doesn't matter
+        if not enable_3d and isinstance(item_a, ROOT.TH3):
+            info(f"Skipping 3D item {key}")
+            continue
+        if not enable_2d and isinstance(item_a, ROOT.TH2):
+            info(f"Skipping 2D item {key}")
+            continue
+
         if not can_handle_item(item_a):
             warn(f"Unable to handle item of type {type(item_a)}")
             continue
 
-        item = ComparisonItem(key=key, item_a=item_a, item_b=item_b)
+        item = ComparisonItem(
+            key=key, item_a=item_a, item_b=item_b, plots=config.plots
+        )
 
         configured_checks = {}
         for pattern, checks in config.checks.items():
@@ -265,61 +290,40 @@ def compare(config: Config, a: Path, b: Path, filters: List[str]) -> Comparison:
 
         #  print(configured_checks)
 
+        dstyle = "strike"
         for ctype, check_kw in configured_checks.items():
             #  print(ctype, check_kw)
-            subchecks = []
-            if isinstance(item_a, ROOT.TH3):
-                for proj in "ProjectionX", "ProjectionY", "ProjectionZ":
-                    proj_a = getattr(item_a, proj)().Clone()
-                    proj_b = getattr(item_b, proj)().Clone()
-                    proj_a.SetDirectory(0)
-                    proj_b.SetDirectory(0)
-                    subchecks.append(
-                        ctype(proj_a, proj_b, suffix="p" + proj[-1], **check_kw)
+            inst = ctype(item_a, item_b, **check_kw)
+
+            item.checks.append(inst)
+            if inst.is_applicable:
+                if inst.is_valid:
+                    console.print(
+                        icons.success,
+                        Text(
+                            str(inst),
+                            style="bold green" if not inst.is_disabled else dstyle,
+                        ),
+                        inst.label,
                     )
-            if isinstance(item_a, ROOT.TH2):
-                for proj in "ProjectionX", "ProjectionY":
-                    proj_a = getattr(item_a, proj)().Clone()
-                    proj_b = getattr(item_b, proj)().Clone()
-                    proj_a.SetDirectory(0)
-                    proj_b.SetDirectory(0)
-                    subchecks.append(
-                        ctype(proj_a, proj_b, suffix="p" + proj[-1], **check_kw)
+                else:
+                    if is_github_actions and not inst.is_disabled:
+                        print(
+                            github_actions_marker(
+                                "error",
+                                key + ": " + str(inst) + "\n" + inst.label,
+                            )
+                        )
+                    console.print(
+                        icons.failure,
+                        Text(
+                            str(inst),
+                            style="bold red" if not inst.is_disabled else dstyle,
+                        ),
+                        inst.label,
                     )
             else:
-                subchecks.append(ctype(item_a, item_b, **check_kw))
-
-            dstyle = "strike"
-            for inst in subchecks:
-                item.checks.append(inst)
-                if inst.is_applicable:
-                    if inst.is_valid:
-                        console.print(
-                            icons.success,
-                            Text(
-                                str(inst),
-                                style="bold green" if not inst.is_disabled else dstyle,
-                            ),
-                            inst.label,
-                        )
-                    else:
-                        if is_github_actions and not inst.is_disabled:
-                            print(
-                                github_actions_marker(
-                                    "error",
-                                    key + ": " + str(inst) + "\n" + inst.label,
-                                )
-                            )
-                        console.print(
-                            icons.failure,
-                            Text(
-                                str(inst),
-                                style="bold red" if not inst.is_disabled else dstyle,
-                            ),
-                            inst.label,
-                        )
-                else:
-                    console.print(icons.inconclusive, inst, style="yellow")
+                console.print(icons.inconclusive, inst, style="yellow")
 
         result.items.append(item)
 

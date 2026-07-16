@@ -48,38 +48,6 @@ def integralAndError(item) -> Tuple[float, float]:
         raise TypeError(f"Invalid type {type(item)}")
 
 
-def get_bin_content(item) -> numpy.array:
-    if isinstance(item, ROOT.TH3):
-        out = numpy.zeros(
-            (
-                item.GetXaxis().GetNbins(),
-                item.GetYaxis().GetNbins(),
-                item.GetZaxis().GetNbins(),
-            )
-        )
-
-        for i in range(out.shape[0]):
-            for j in range(out.shape[1]):
-                for k in range(out.shape[2]):
-                    out[i][j][k] = item.GetBinContent(i, j, k)
-
-        return out
-    elif isinstance(item, ROOT.TH2):
-        out = numpy.zeros((item.GetXaxis().GetNbins(), item.GetYaxis().GetNbins()))
-
-        for i in range(out.shape[0]):
-            for j in range(out.shape[1]):
-                out[i][j] = item.GetBinContent(i, j)
-
-        return out
-    elif isinstance(item, ROOT.TH1):
-        return numpy.array(
-            [item.GetBinContent(b) for b in range(1, item.GetXaxis().GetNbins())]
-        )
-    else:
-        raise TypeError("Invalid type")
-
-
 def get_bin_content_error(item) -> numpy.array:
     if isinstance(item, ROOT.TH3):
         out = numpy.zeros(
@@ -165,7 +133,9 @@ def convert_hist(item):
             convert_axis(item.GetZaxis()),
             storage=hist.storage.Weight(),
             name=_process_axis_title(item.GetTitle()),
-            label=_process_axis_title(item.GetZaxis().GetTitle()),
+            # for a TH3 the z axis is a real axis, there is no title for the
+            # bin content axis
+            label="",
         )
         cont, err = get_bin_content_error(item)
         h.view().value = cont
