@@ -125,6 +125,24 @@ def main(
             help="Comparison panel metric for 2D/3D histograms only, falls back to --comparison (overrides the config file)"
         )
     ] = None,
+    enable_2d: Annotated[
+        bool,
+        typer.Option(
+            "--2d/--no-2d",
+            help="Compare and plot 2D histograms (TH2, TProfile2D). Disabling "
+            "this skips these items entirely, which can speed up the comparison "
+            "considerably"
+        )
+    ] = True,
+    enable_3d: Annotated[
+        bool,
+        typer.Option(
+            "--3d/--no-3d",
+            help="Compare and plot 3D histograms (TH3, TProfile3D). Disabling "
+            "this skips these items entirely, which can speed up the comparison "
+            "considerably"
+        )
+    ] = True,
 ):
     try:
         import ROOT
@@ -174,7 +192,14 @@ def main(
                 filters = fh.read().strip().split("\n")
         else:
             filters = [_filter]
-        comparison = compare(config, monitored, reference, filters=filters)
+        comparison = compare(
+            config,
+            monitored,
+            reference,
+            filters=filters,
+            enable_2d=enable_2d,
+            enable_3d=enable_3d,
+        )
 
         comparison.label_monitored = label_monitored
         comparison.label_reference = label_reference

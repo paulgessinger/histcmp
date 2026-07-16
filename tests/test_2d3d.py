@@ -116,6 +116,32 @@ def test_comparison_metric_2d3d_override(root_files, tmp_path):
     assert not (plots / "th2_pull.png").exists()
 
 
+@pytest.mark.parametrize(
+    "enable_2d,enable_3d,expected_keys",
+    [
+        (False, True, ["th1", "th3", "tp3"]),
+        (True, False, ["th1", "th2", "tp2"]),
+        (False, False, ["th1"]),
+    ],
+)
+def test_disable_2d_3d(root_files, tmp_path, enable_2d, enable_3d, expected_keys):
+    output = tmp_path / "report.html"
+    plots = tmp_path / "plots"
+
+    histcmp.cli.main(
+        root_files["nominal"],
+        root_files["same"],
+        output=output,
+        plots=plots,
+        format="png",
+        enable_2d=enable_2d,
+        enable_3d=enable_3d,
+    )
+
+    plotted_keys = sorted({p.stem.split("_")[0] for p in plots.glob("*.png")})
+    assert plotted_keys == sorted(expected_keys)
+
+
 def test_shifted_files_fail(root_files, tmp_path):
     with pytest.raises(typer.Exit):
         histcmp.cli.main(

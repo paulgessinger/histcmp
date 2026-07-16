@@ -188,7 +188,14 @@ def collect_items(d, prefix=None):
     return items
 
 
-def compare(config: Config, a: Path, b: Path, filters: List[str]) -> Comparison:
+def compare(
+    config: Config,
+    a: Path,
+    b: Path,
+    filters: List[str],
+    enable_2d: bool = True,
+    enable_3d: bool = True,
+) -> Comparison:
     rf_a = ROOT.TFile.Open(str(a))
     rf_b = ROOT.TFile.Open(str(b))
 
@@ -243,6 +250,14 @@ def compare(config: Config, a: Path, b: Path, filters: List[str]) -> Comparison:
             result.a_only.add(key)
 
         console.rule(f"{key} ({item_a.__class__.__name__})")
+
+        # note: TH3 does not inherit from TH2, so the order doesn't matter
+        if not enable_3d and isinstance(item_a, ROOT.TH3):
+            info(f"Skipping 3D item {key}")
+            continue
+        if not enable_2d and isinstance(item_a, ROOT.TH2):
+            info(f"Skipping 2D item {key}")
+            continue
 
         if not can_handle_item(item_a):
             warn(f"Unable to handle item of type {type(item_a)}")
