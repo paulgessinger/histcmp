@@ -238,8 +238,6 @@ def main(
         )
 
         if output is not None:
-            if plots is not None:
-                plots.mkdir(exist_ok=True, parents=True)
             make_report(comparison, output, plots, format=format, jobs=jobs)
 
         if status != Status.SUCCESS:
