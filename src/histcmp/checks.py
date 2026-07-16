@@ -15,7 +15,6 @@ import ROOT
 from histcmp import icons
 from histcmp.root_helpers import (
     integralAndError,
-    get_bin_content,
     get_bin_content_error,
     push_root_level,
     convert_hist,
@@ -53,10 +52,9 @@ def chi2TestX(h1, h2, option="UU"):
     return chi2result(root_prob, root_chi2.value, root_ndf.value, root_igood.value)
 
 class CompatCheck(ABC):
-    def __init__(self, disabled: bool = False, suffix: Optional[str] = None):
+    def __init__(self, disabled: bool = False):
         self.disabled = disabled
         self._plot = None
-        self.suffix = suffix
 
     @property
     def is_disabled(self) -> bool:
@@ -106,7 +104,7 @@ class CompatCheck(ABC):
         raise NotImplementedError()
 
     def __str__(self) -> str:
-        return self.name + (" " + self.suffix if self.suffix is not None else "")
+        return self.name
 
 
 class CompositeCheck(CompatCheck):
@@ -177,6 +175,8 @@ class KolmogorovTest(ScoreThresholdCheck):
 
     @functools.cached_property
     def score(self) -> float:
+        # for TH2/TH3 this dispatches to ROOT's pseudo-KS test, which averages
+        # the KS distance over the possible axis unrolling orders
         return self.item_a.KolmogorovTest(self.item_b)
 
     @functools.cached_property
@@ -297,6 +297,29 @@ class IntegralCheck(ScoreThresholdCheck):
         return "IntegralTest"
 
 
+def _project_profile(item_a, item_b):
+    """
+    Convert TProfile/TProfile2D/TProfile3D pairs into plain histograms of the
+    profiled means, so ROOT's Divide/Add treat the bin contents consistently.
+    Other types are passed through unchanged. Note that TProfile2D/3D are not
+    TProfile subclasses (they derive from TH2D/TH3D).
+    """
+    if isinstance(item_a, ROOT.TProfile2D):
+        proj = "ProjectionXY"
+    elif isinstance(item_a, ROOT.TProfile3D):
+        proj = "ProjectionXYZ"
+    elif isinstance(item_a, ROOT.TProfile):
+        proj = "ProjectionX"
+    else:
+        return item_a, item_b
+
+    item_a = getattr(item_a, proj)()
+    item_b = getattr(item_b, proj)()
+    item_a.SetDirectory(0)
+    item_b.SetDirectory(0)
+    return item_a, item_b
+
+
 class RatioCheck(CompatCheck):
     def __init__(self, item_a, item_b, threshold: float = 3, **kwargs):
         self.ratio = None
@@ -325,9 +348,7 @@ class RatioCheck(CompatCheck):
                 self.applicable = True
 
             else:
-                if isinstance(item_a, ROOT.TProfile):
-                    item_a = item_a.ProjectionX()
-                    item_b = item_b.ProjectionX()
+                item_a, item_b = _project_profile(item_a, item_b)
 
                 try:
                     ratio = item_a.Clone()
@@ -385,9 +406,7 @@ class ResidualCheck(CompatCheck):
                     self.item_a = tefficiency_to_th1(self.item_a)
                     self.item_b = tefficiency_to_th1(self.item_b)
 
-            if isinstance(self.item_a, ROOT.TProfile):
-                self.item_a = self.item_a.ProjectionX()
-                self.item_b = self.item_b.ProjectionX()
+            self.item_a, self.item_b = _project_profile(self.item_a, self.item_b)
 
             try:
                 self.residual = self.item_a.Clone()
@@ -419,19 +438,18 @@ class ResidualCheck(CompatCheck):
     def is_valid(self) -> bool:
         val, err, pull = self._pulls
         nabove = numpy.sum(pull[~numpy.isnan(pull)] >= self.threshold)
-        return nabove < numpy.sqrt(len(val))
+        return nabove < numpy.sqrt(val.size)
 
     @functools.cached_property
     def label(self) -> str:
         val, err, pull = self._pulls
         count = numpy.sum(pull[~numpy.isnan(pull)] >= self.threshold)
-        pe = numpy.sqrt(len(val))
+        nbins = val.size
+        pe = numpy.sqrt(nbins)
         if self.is_valid:
-            return (
-                f"pull < {self.threshold} in {len(val)-count}/{len(val)} bins, cf. {pe}"
-            )
+            return f"pull < {self.threshold} in {nbins-count}/{nbins} bins, cf. {pe}"
         else:
-            return f"pull > {self.threshold} in {count}/{len(val)} bins, cf. {pe}"
+            return f"pull > {self.threshold} in {count}/{nbins} bins, cf. {pe}"
 
     def make_plot(self, output: Path) -> bool:
         if not self.applicable:

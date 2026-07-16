@@ -14,7 +14,7 @@ import yaml
 from histcmp.console import fail, info, console
 from histcmp.report import make_report
 from histcmp.checks import Status
-from histcmp.config import Config
+from histcmp.config import Config, Renderer3D, ComparisonMetric
 from histcmp.github import is_github_actions, github_actions_marker
 
 #  install(show_locals=True)
@@ -104,6 +104,27 @@ def main(
             help="Number of worker processes used to render plots"
         )
     ] = 1,
+    renderer_3d: Annotated[
+        Optional[Renderer3D],
+        typer.Option(
+            "--renderer-3d",
+            help="Renderer used for 3D histograms (overrides the config file)"
+        )
+    ] = None,
+    comparison: Annotated[
+        Optional[ComparisonMetric],
+        typer.Option(
+            "--comparison",
+            help="Comparison panel metric (overrides the config file)"
+        )
+    ] = None,
+    comparison_2d3d: Annotated[
+        Optional[ComparisonMetric],
+        typer.Option(
+            "--comparison-2d3d",
+            help="Comparison panel metric for 2D/3D histograms only, falls back to --comparison (overrides the config file)"
+        )
+    ] = None,
 ):
     try:
         import ROOT
@@ -136,6 +157,13 @@ def main(
     else:
         with config_path.open() as fh:
             config = Config(**yaml.safe_load(fh))
+
+    if renderer_3d is not None:
+        config.plots.renderer_3d = renderer_3d
+    if comparison is not None:
+        config.plots.comparison = comparison
+    if comparison_2d3d is not None:
+        config.plots.comparison_2d3d = comparison_2d3d
 
     console.print(Panel(Pretty(config), title="Configuration"))
 
