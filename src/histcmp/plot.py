@@ -8,6 +8,7 @@ import numpy
 import mplhep
 
 import hist
+import rich
 from matplotlib import pyplot
 
 pyplot.rcParams.update(
@@ -183,3 +184,59 @@ def plot_to_uri(figure):
     data = svg_encode(data)
     datauri = f"data:image/svg+xml;utf8,{data}"
     return datauri
+
+
+def init_render_worker():
+    import matplotlib
+
+    matplotlib.use("Agg", force=True)
+
+
+def render_plots(specs, key, label_a, label_b, plot_dir, format: str):
+    """
+    Render the plot specs produced by ComparisonItem.plot_specs and return the
+    data URIs for embedding in the report.
+
+    This function only handles picklable inputs and does not need ROOT, so it
+    can run in a worker process.
+    """
+    uris = []
+
+    for spec in specs:
+        kind = spec[0]
+
+        if kind == "eff":
+            _, a, a_err, b, b_err, suffix = spec
+
+            lowest = 0
+            largest = 1.015
+            nonzero = numpy.concatenate(
+                [a.values()[a.values() > 0], b.values()[b.values() > 0]]
+            )
+            if len(nonzero) > 0:
+                lowest = numpy.min(nonzero)
+                largest = numpy.max(nonzero)
+
+            fig, (ax, rax) = plot_ratio_eff(a, a_err, b, b_err, label_a, label_b)
+            ax.set_ylim(
+                bottom=lowest * 0.99,
+                top=largest * 1.008,
+            )
+            #  mplhep.atlas.text("Simulation Internal", ax=ax, loc=1)
+        else:
+            _, h_a, h_b, suffix = spec
+
+            fig, (ax, rax) = plot_ratio(h_a, h_b, label_a, label_b)
+            #  mplhep.atlas.text("Simulation Internal", ax=ax, loc=1)
+
+        try:
+            uris.append(plot_to_uri(fig))
+            if plot_dir is not None:
+                safe_key = key.replace("/", "_") + suffix
+                fig.savefig(plot_dir / f"{safe_key}.{format}")
+        except ValueError as e:
+            rich.print(f"ERROR during plot: {e}")
+
+        pyplot.close(fig)
+
+    return uris

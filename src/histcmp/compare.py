@@ -5,12 +5,9 @@ from dataclasses import dataclass, field
 import fnmatch
 import re
 
-import rich
 from rich.progress import track
 from rich.text import Text
 from rich.panel import Panel
-from matplotlib import pyplot
-import numpy
 
 from histcmp.console import console, fail, info, good, warn
 from histcmp.root_helpers import (
@@ -19,7 +16,7 @@ from histcmp.root_helpers import (
     convert_hist,
     tefficiency_to_th1,
 )
-from histcmp.plot import plot_ratio, plot_ratio_eff, plot_to_uri
+from histcmp.plot import render_plots
 from histcmp import icons
 import histcmp.checks
 from histcmp.github import is_github_actions, github_actions_marker
@@ -60,6 +57,48 @@ class ComparisonItem:
         return Status.INCONCLUSIVE
         #  raise RuntimeError("Shouldn't happen")
 
+    def plot_specs(self):
+        """
+        Build the picklable plot specifications for this item. This converts
+        the ROOT objects into plain numpy backed histograms, so the result can
+        be shipped to a worker process for rendering with
+        histcmp.plot.render_plots.
+        """
+        specs = []
+
+        if isinstance(self.item_a, ROOT.TH3):
+            h3_a = convert_hist(self.item_a)
+            h3_b = convert_hist(self.item_b)
+
+            for proj in [0, 1, 2]:
+                d = "XYZ"[proj]
+                specs.append(
+                    ("ratio", h3_a.project(proj), h3_b.project(proj), f"_p{d}")
+                )
+
+        elif isinstance(self.item_a, ROOT.TH2):
+            h2_a = convert_hist(self.item_a)
+            h2_b = convert_hist(self.item_b)
+
+            for proj in [0, 1]:
+                d = "XY"[proj]
+                specs.append(
+                    ("ratio", h2_a.project(proj), h2_b.project(proj), f"_p{d}")
+                )
+
+        elif isinstance(self.item_a, ROOT.TEfficiency):
+            a, a_err = convert_hist(self.item_a)
+            b, b_err = convert_hist(self.item_b)
+
+            specs.append(("eff", a, a_err, b, b_err, ""))
+
+        elif isinstance(self.item_a, ROOT.TH1):
+            specs.append(
+                ("ratio", convert_hist(self.item_a), convert_hist(self.item_b), "")
+            )
+
+        return specs
+
     def ensure_plots(
         self,
         report_dir: Path,
@@ -68,75 +107,9 @@ class ComparisonItem:
         label_b: str,
         format: str,
     ):
-        figs = []
-
-        if isinstance(self.item_a, ROOT.TH3):
-            h2_a = convert_hist(self.item_a)
-            h2_b = convert_hist(self.item_b)
-
-            for proj in [0, 1, 2]:
-                h1_a = h2_a.project(proj)
-                h1_b = h2_b.project(proj)
-
-                fig, (ax, rax) = plot_ratio(h1_a, h1_b, label_a, label_b)
-
-                d = "XYZ"[proj]
-
-                figs.append((fig, f"_p{d}"))
-                #  mplhep.atlas.text("Simulation Internal", ax=ax, loc=1)
-
-        elif isinstance(self.item_a, ROOT.TH2):
-            h2_a = convert_hist(self.item_a)
-            h2_b = convert_hist(self.item_b)
-
-            for proj in [0, 1]:
-                h1_a = h2_a.project(proj)
-                h1_b = h2_b.project(proj)
-
-                fig, (ax, rax) = plot_ratio(h1_a, h1_b, label_a, label_b)
-
-                d = "XY"[proj]
-
-                figs.append((fig, f"_p{d}"))
-                #  mplhep.atlas.text("Simulation Internal", ax=ax, loc=1)
-
-        elif isinstance(self.item_a, ROOT.TEfficiency):
-            a, a_err = convert_hist(self.item_a)
-            b, b_err = convert_hist(self.item_b)
-
-            lowest = 0
-            largest = 1.015
-            nonzero = numpy.concatenate(
-                [a.values()[a.values() > 0], b.values()[b.values() > 0]]
-            )
-            if len(nonzero) > 0:
-                lowest = numpy.min(nonzero)
-                largest = numpy.max(nonzero)
-
-            fig, (ax, rax) = plot_ratio_eff(a, a_err, b, b_err, label_a, label_b)
-            figs.append((fig, ""))
-            ax.set_ylim(
-                bottom=lowest * 0.99,
-                top=largest * 1.008,
-            )
-            #  mplhep.atlas.text("Simulation Internal", ax=ax, loc=1)
-
-        elif isinstance(self.item_a, ROOT.TH1):
-            a = convert_hist(self.item_a)
-            b = convert_hist(self.item_b)
-            fig, (ax, rax) = plot_ratio(a, b, label_a, label_b)
-            figs.append((fig, ""))
-
-            #  mplhep.atlas.text("Simulation Internal", ax=ax, loc=1)
-
-        for fig, suffix in figs:
-            try:
-                self._generic_plots.append(plot_to_uri(fig))
-                if plot_dir is not None:
-                    safe_key = self.key.replace("/", "_") + suffix
-                    fig.savefig(plot_dir / f"{safe_key}.{format}")
-            except ValueError as e:
-                rich.print(f"ERROR during plot: {e}")
+        self._generic_plots = render_plots(
+            self.plot_specs(), self.key, label_a, label_b, plot_dir, format
+        )
 
     @property
     def first_plot_index(self):
