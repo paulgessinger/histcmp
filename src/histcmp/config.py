@@ -48,9 +48,9 @@ class PlotConfig(BaseModel):
     renderer_3d: Renderer3D = Renderer3D.voxel
     # comparison panel metric
     comparison: ComparisonMetric = ComparisonMetric.ratio
-    # override the comparison metric for 2D/3D histograms only; falls back to
-    # `comparison` if not set
-    comparison_2d3d: Optional[ComparisonMetric] = None
+    # comparison metric for 2D/3D histograms only; set to null to fall back
+    # to `comparison`
+    comparison_2d3d: Optional[ComparisonMetric] = ComparisonMetric.pull
 
     @property
     def effective_comparison_2d3d(self) -> str:

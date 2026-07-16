@@ -122,7 +122,7 @@ def main(
         Optional[ComparisonMetric],
         typer.Option(
             "--comparison-2d3d",
-            help="Comparison panel metric for 2D/3D histograms only, falls back to --comparison (overrides the config file)"
+            help="Comparison panel metric for 2D/3D histograms only, default: pull (overrides the config file)"
         )
     ] = None,
     enable_2d: Annotated[

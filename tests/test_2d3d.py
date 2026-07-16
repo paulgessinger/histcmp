@@ -73,28 +73,22 @@ def test_identical_files_2d3d(root_files, tmp_path, renderer_3d, jobs):
     expected = ["th1.png"] + sorted(
         f"{key}_{panel}.png"
         for key in ["th2", "tp2", "th3", "tp3"]
-        for panel in ["monitored", "reference", "ratio"]
+        # 2D/3D comparison panels default to the pull metric
+        for panel in ["monitored", "reference", "pull"]
     )
     assert plot_files == sorted(expected)
 
 
-def test_comparison_metric_option(root_files, tmp_path):
-    output = tmp_path / "report.html"
-    plots = tmp_path / "plots"
+def test_comparison_metric_fallback():
+    from histcmp.config import PlotConfig
 
-    # the global metric applies to 2D/3D if no dedicated metric is given
-    histcmp.cli.main(
-        root_files["nominal"],
-        root_files["same"],
-        output=output,
-        plots=plots,
-        format="png",
-        comparison="pull",
+    # explicit 2D/3D metric wins, unset falls back to the global metric
+    assert PlotConfig().effective_comparison_2d3d == "pull"
+    assert PlotConfig(comparison="residual").effective_comparison_2d3d == "pull"
+    assert (
+        PlotConfig(comparison="residual", comparison_2d3d=None).effective_comparison_2d3d
+        == "residual"
     )
-
-    assert (plots / "th2_pull.png").exists()
-    assert (plots / "th3_pull.png").exists()
-    assert not (plots / "th2_ratio.png").exists()
 
 
 def test_comparison_metric_2d3d_override(root_files, tmp_path):
