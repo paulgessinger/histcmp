@@ -209,6 +209,19 @@ def test_checks_native_nd(hist_pairs, key):
                 assert not check.is_valid
 
 
+@pytest.mark.parametrize("key", ["th1", "th2", "tp2", "th3", "tp3"])
+def test_get_bin_content_error_matches_root(hist_pairs, key):
+    from histcmp.root_helpers import get_bin_content_error
+
+    item, _ = hist_pairs["same"][key]
+    out, err = get_bin_content_error(item)
+
+    for idx in numpy.ndindex(out.shape):
+        root_bin = tuple(i + 1 for i in idx)
+        assert out[idx] == pytest.approx(item.GetBinContent(*root_bin)), idx
+        assert err[idx] == pytest.approx(item.GetBinError(*root_bin)), idx
+
+
 def test_residual_check_nd_bin_count(hist_pairs):
     pytest.importorskip("ROOT")
     from histcmp.checks import ResidualCheck

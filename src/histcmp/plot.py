@@ -394,9 +394,11 @@ def plot_3d_scatter(
     return figs
 
 
-#  Axes3D.voxels builds up to 6 polygons per filled bin and becomes very slow
-#  and very large beyond this
-MAX_VOXELS = 20_000
+#  Axes3D.voxels does heavy per-voxel work (up to 6 polygons each, built in
+#  Python) and takes ~1ms per filled bin, so larger histograms fall back to
+#  the scatter renderer. Beyond a few thousand bins voxels are unreadable
+#  anyway since only the outer shell is visible.
+MAX_VOXELS = 4_000
 
 
 def plot_3d_voxel(
@@ -513,12 +515,6 @@ def plot_to_uri(figure, raster: bool = False):
     data = svg_encode(data)
     datauri = f"data:image/svg+xml;utf8,{data}"
     return datauri
-
-
-def init_render_worker():
-    import matplotlib
-
-    matplotlib.use("Agg", force=True)
 
 
 def render_plots(specs, key, label_a, label_b, plot_dir, format: str):

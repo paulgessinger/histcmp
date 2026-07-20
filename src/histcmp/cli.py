@@ -101,7 +101,7 @@ def main(
         typer.Option(
             "--jobs", "-j",
             min=1,
-            help="Number of worker processes used to render plots"
+            help="Number of worker processes used to compare items and render plots"
         )
     ] = 1,
     renderer_3d: Annotated[
@@ -192,6 +192,13 @@ def main(
                 filters = fh.read().strip().split("\n")
         else:
             filters = [_filter]
+        # Without an output there is nothing to plot, so the parallel
+        # per-item pipeline (which also renders) is not worth spinning up.
+        if output is None:
+            jobs = 1
+        if jobs > 1 and plots is not None:
+            plots.mkdir(exist_ok=True, parents=True)
+
         comparison = compare(
             config,
             monitored,
@@ -199,6 +206,11 @@ def main(
             filters=filters,
             enable_2d=enable_2d,
             enable_3d=enable_3d,
+            jobs=jobs,
+            label_monitored=label_monitored,
+            label_reference=label_reference,
+            plot_dir=plots,
+            format=format,
         )
 
         comparison.label_monitored = label_monitored
@@ -291,7 +303,7 @@ def main(
         )
 
         if output is not None:
-            make_report(comparison, output, plots, format=format, jobs=jobs)
+            make_report(comparison, output, plots, format=format)
 
         if status != Status.SUCCESS:
             raise typer.Exit(1)
