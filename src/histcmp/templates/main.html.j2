@@ -24,7 +24,7 @@
 
         <div class="block">
         {% for plot in item.generic_plots %}
-        <img src="{{plot}}" style="display: block"/>
+        <img src="{{ plot_url(plot) | e }}" loading="lazy" style="display: block"/>
         {% endfor %}
         </div>
 

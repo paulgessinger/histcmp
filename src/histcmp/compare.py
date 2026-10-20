@@ -43,7 +43,7 @@ class ComparisonItem:
         self.item_a = item_a
         self.item_b = item_b
         self.plots = plots if plots is not None else PlotConfig()
-        self._generic_plots = []
+        self._generic_plots: Optional[List[Path]] = None
         self.checks = []
 
     @functools.cached_property
@@ -64,17 +64,15 @@ class ComparisonItem:
 
     def ensure_plots(
         self,
-        report_dir: Path,
         plot_dir: Path,
         label_a: str,
         label_b: str,
-        format: str,
     ):
-        if self._generic_plots:
+        if self._generic_plots is not None:
             # already rendered, e.g. by a worker process during compare()
             return
         self._generic_plots = render_plots(
-            self.plot_specs(), self.key, label_a, label_b, plot_dir, format
+            self.plot_specs(), self.key, label_a, label_b, plot_dir
         )
 
     @property
@@ -85,7 +83,7 @@ class ComparisonItem:
 
     @property
     def generic_plots(self) -> List[Path]:
-        return self._generic_plots
+        return self._generic_plots or []
 
 
 @dataclass
@@ -281,8 +279,10 @@ def compare(
     label_monitored: Optional[str] = None,
     label_reference: Optional[str] = None,
     plot_dir: Optional[Path] = None,
-    format: str = "pdf",
 ) -> Comparison:
+    if jobs > 1 and plot_dir is None:
+        raise ValueError("Parallel comparisons require a plot directory")
+
     rf_a = ROOT.TFile.Open(str(a))
     rf_b = ROOT.TFile.Open(str(b))
 
@@ -334,7 +334,6 @@ def compare(
             label_monitored,
             label_reference,
             plot_dir,
-            format,
         )
         result.b_only = {(k, key_map_b[k][0]) for k in (keys_b - keys_a)}
         result.a_only = {(k, key_map_a[k][0]) for k in (keys_a - keys_b)}
@@ -397,8 +396,7 @@ def _compare_parallel(
     jobs: int,
     label_monitored: Optional[str],
     label_reference: Optional[str],
-    plot_dir: Optional[Path],
-    format: str,
+    plot_dir: Path,
 ):
     """
     Compare the common items by scheduling them by name onto worker processes
@@ -420,7 +418,6 @@ def _compare_parallel(
             label_monitored,
             label_reference,
             plot_dir,
-            format,
         ),
     ) as executor:
         futures = {}

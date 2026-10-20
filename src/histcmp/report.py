@@ -1,9 +1,11 @@
 from datetime import datetime
 from pathlib import Path
+import os
 import shutil
 from typing import Union, Optional
 import contextlib
 import re
+from urllib.parse import quote
 from rich.progress import track
 from rich.emoji import Emoji
 
@@ -137,15 +139,20 @@ def copy_static(output: Path) -> None:
     shutil.copytree(static, dest)
 
 
+def report_plot_directory(output: Path, plot_dir: Optional[Path] = None) -> Path:
+    if plot_dir is None:
+        plot_dir = output.with_name(f"{output.stem}_plots")
+    return plot_dir.resolve()
+
+
 def make_report(
     comparison: Comparison,
     output: Path,
     plot_dir: Optional[Path] = None,
-    format: str = "pdf",
 ):
     output.parent.mkdir(exist_ok=True, parents=True)
-    if plot_dir is not None:
-        plot_dir.mkdir(exist_ok=True, parents=True)
+    plot_dir = report_plot_directory(output, plot_dir)
+    plot_dir.mkdir(exist_ok=True, parents=True)
 
     #  copy_static(output)
 
@@ -158,12 +165,18 @@ def make_report(
             comparison.items, description="Making plots", console=console
         ):
             item.ensure_plots(
-                output,
                 plot_dir,
                 comparison.label_monitored,
                 comparison.label_reference,
-                format=format,
             )
 
+    def plot_url(path: Path) -> str:
+        relative = Path(os.path.relpath(path.resolve(), output.parent.resolve()))
+        return quote(relative.as_posix())
+
     with output.open("w") as fh:
-        fh.write(env.get_template("main.html.j2").render(comparison=comparison))
+        fh.write(
+            env.get_template("main.html.j2").render(
+                comparison=comparison, plot_url=plot_url
+            )
+        )

@@ -12,7 +12,7 @@ import jinja2
 import yaml
 
 from histcmp.console import fail, info, console
-from histcmp.report import make_report
+from histcmp.report import make_report, report_plot_directory
 from histcmp.checks import Status
 from histcmp.config import Config, Renderer3D, ComparisonMetric
 from histcmp.github import is_github_actions, github_actions_marker
@@ -62,7 +62,7 @@ def main(
         typer.Option(
             "-p", "--plots", 
             file_okay=False,
-            help="Directory to save comparison plots"
+            help="Directory to save PNG plots (default: <report-stem>_plots beside the report)"
         )
     ] = None,
     label_monitored: Annotated[
@@ -93,9 +93,9 @@ def main(
     format: Annotated[
         str,
         typer.Option(
-            help="Output format for plots (pdf, png, etc.)"
+            help="Output format for plots (only png is supported)"
         )
-    ] = "pdf",
+    ] = "png",
     jobs: Annotated[
         int,
         typer.Option(
@@ -144,6 +144,11 @@ def main(
         )
     ] = True,
 ):
+    if format != "png":
+        raise typer.BadParameter(
+            "Only PNG plots are supported", param_hint="--format"
+        )
+
     try:
         import ROOT
     except ImportError:
@@ -196,7 +201,8 @@ def main(
         # per-item pipeline (which also renders) is not worth spinning up.
         if output is None:
             jobs = 1
-        if jobs > 1 and plots is not None:
+        else:
+            plots = report_plot_directory(output, plots)
             plots.mkdir(exist_ok=True, parents=True)
 
         comparison = compare(
@@ -210,7 +216,6 @@ def main(
             label_monitored=label_monitored,
             label_reference=label_reference,
             plot_dir=plots,
-            format=format,
         )
 
         comparison.label_monitored = label_monitored
@@ -303,7 +308,7 @@ def main(
         )
 
         if output is not None:
-            make_report(comparison, output, plots, format=format)
+            make_report(comparison, output, plots)
 
         if status != Status.SUCCESS:
             raise typer.Exit(1)
