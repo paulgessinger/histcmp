@@ -1,75 +1,133 @@
 {% extends "base.html.j2" %}
 
 {% block body %}
+    <noscript><p class="notification">Enable JavaScript to search and browse this report.</p></noscript>
+    <section class="report-summary" aria-label="Full comparison summary">
+        <strong>Full comparison</strong>
+        <span>{{ comparison.items | length }} compared</span>
+        <span class="status-success">{{ totals.success }} passed</span>
+        <span class="status-failure">{{ totals.failure }} failed</span>
+        <span class="status-inconclusive">{{ totals.inconclusive }} inconclusive</span>
+        <details><summary>{{ added | length }} added</summary>
+            <p>Only in {{ (comparison.label_monitored or "monitored") | e }}</p>
+            <ul>{% for name, kind in added %}<li>{{ name | e }} <small>{{ kind | e }}</small></li>{% else %}<li>None</li>{% endfor %}</ul>
+        </details>
+        <details><summary>{{ missing | length }} missing</summary>
+            <p>Only in {{ (comparison.label_reference or "reference") | e }}</p>
+            <ul>{% for name, kind in missing %}<li>{{ name | e }} <small>{{ kind | e }}</small></li>{% else %}<li>None</li>{% endfor %}</ul>
+        </details>
+    </section>
+    <section class="report-controls" aria-label="Filter plots">
+        <div class="filter-fields">
+            <label class="search-field" for="title-search">Search titles
+                <input id="title-search" class="input" type="search"
+                    placeholder="Histogram name…" autocomplete="off" />
+            </label>
+            <button id="clear-filters" class="button" type="button">Clear filters</button>
+        </div>
+        <div id="status-filter" class="status-options" role="group" aria-label="Filter by status">
+            <button type="button" class="button" data-status="" aria-pressed="true">All <span data-count-status=""></span></button>
+            <button type="button" class="button status-failure" data-status="failure" aria-pressed="false">Failed <span data-count-status="failure"></span></button>
+            <button type="button" class="button status-success" data-status="success" aria-pressed="false">Passed <span data-count-status="success"></span></button>
+            <button type="button" class="button status-inconclusive" data-status="inconclusive" aria-pressed="false">Inconclusive <span data-count-status="inconclusive"></span></button>
+        </div>
+        <button id="toggle-filters" class="button" type="button" aria-expanded="false" aria-controls="filter-secondary">Tags &amp; sorting</button>
+        <div id="filter-secondary">
+        <div class="sort-controls">
+            <label for="sort-order">Sort by</label>
+            <select id="sort-order">
+                <option value="name">Name A–Z</option>
+                <option value="failures">Failures first</option>
+            </select>
+            <small id="sort-description">Alphabetical histogram names.</small>
+        </div>
+        <fieldset id="tag-filter">
+            <legend>Tags <span class="tag-help">— match any selected tag</span></legend>
+            <div class="tag-options">
+                {% for tag in tags %}
+                <label class="tag-option"><input type="checkbox" value="tag-{{ loop.index0 }}" /> {{ tag | e }} <span data-count-tag="tag-{{ loop.index0 }}"></span></label>
+                {% endfor %}
+                <label class="tag-option"><input type="checkbox" value="untagged" /> Untagged <span data-count-tag="untagged"></span></label>
+            </div>
+        </fieldset>
+        </div>
+        <div class="results-toolbar">
+            <p id="result-count" role="status" aria-live="polite"></p>
+            <div class="view-options" role="group" aria-label="Report view">
+                <button type="button" class="button" data-view="plots" aria-pressed="true">Plots</button>
+                <button type="button" class="button" data-view="overview" aria-pressed="false">Overview</button>
+            </div>
+        </div>
+    </section>
+    <p id="empty-results" class="notification" hidden>No plots match these filters.</p>
+    <section id="results" aria-label="Histogram comparisons">
+        <div id="overview-header" class="overview-row" role="row" hidden>
+            <span role="columnheader">Histogram</span><span role="columnheader">Status</span>
+            <span role="columnheader">Tags</span><span role="columnheader">Checks</span>
+        </div>
+        <div id="plot-grid" class="plot-container"></div>
+    </section>
+    <dialog id="plot-viewer" aria-labelledby="viewer-title">
+        <header class="viewer-toolbar">
+            <h2 id="viewer-title"></h2>
+            <button id="viewer-close" class="button" type="button" autofocus>Close</button>
+        </header>
+        <div id="viewer-content"></div>
+        <footer class="viewer-toolbar">
+            <button id="viewer-previous" class="button" type="button" aria-label="Previous image">← Previous</button>
+            <span id="viewer-position" role="status"></span>
+            <button id="viewer-next" class="button" type="button" aria-label="Next image">Next →</button>
+            <a id="viewer-original" target="_blank" rel="noopener">Open original PNG</a>
+        </footer>
+    </dialog>
+    {# Inert templates are mounted near the viewport; placeholders retain scroll positions. #}
     {% for item in comparison.items %}
-    <a href="#{{ item.key }}" title="{{ item.key }}">
-        {{ item.status.icon | emojize }}
-    </a>
+    <template id="template-plot-{{ loop.index0 }}">
+        <article class="box plot" id="plot-{{ loop.index0 }}">
+            <header class="plot-header">
+                <span class="status-badge status-{{ item.status.name | lower }}">
+                    {% if item.status == Status.SUCCESS %}Passed
+                    {% elif item.status == Status.FAILURE %}Failed
+                    {% else %}Inconclusive{% endif %}
+                </span>
+                <h2><a href="#plot-{{ loop.index0 }}">{{ item.key | e }}</a></h2>
+                <div class="plot-tags" aria-label="Tags">
+                    {% for tag in report_index[loop.index0].tags %}
+                    <button type="button" class="tag-chip" data-filter-tag="tag-{{ tags.index(tag) }}" aria-pressed="false">{{ tag | e }}</button>
+                    {% else %}
+                    <button type="button" class="tag-chip" data-filter-tag="untagged" aria-pressed="false">Untagged</button>
+                    {% endfor %}
+                </div>
+            </header>
+            <div class="plot-images">
+                {% for plot in item.generic_plots %}
+                <a href="{{ plot_url(plot) | e }}" data-image-index="{{ loop.index0 }}" target="_blank" rel="noopener"
+                    aria-label="Open {{ item.key | e }} image {{ loop.index }} at full size">
+                    <img data-src="{{ plot_url(plot) | e }}" loading="lazy" decoding="async"
+                        width="720" height="600"
+                        alt="{{ item.key | e }} — image {{ loop.index }}" />
+                </a>
+                {% endfor %}
+            </div>
+            <div class="checks">
+                {% for check in item.checks %}
+                <details class="check">
+                    <summary class="{% if check.is_disabled %}status-disabled{% else %}status-{{ check.status.name | lower }}{% endif %}">
+                        {{ check | e }}{% if check.is_disabled %} (disabled){% endif %}
+                    </summary>
+                    <div class="check-details">
+                        {% if not check.is_applicable %}
+                        {{ check | e }} is not applicable
+                        {% else %}
+                        {{ check.label.strip() | e | replace("\n", "<br>" | safe) | replace("---", "<hr>" | safe) }}
+                        {% endif %}
+                    </div>
+                </details>
+                {% endfor %}
+            </div>
+        </article>
+    </template>
     {% endfor %}
-    <hr>
-
-    <div class="container plot-container">
-    {% for item in comparison.items %}
-    <div class="column is-one-third plot" x-data="{shown: false}" x-intersect="shown = true">
-    <div class="box" x-show="shown">
-        <div class="block">
-        <h2 class="title {% if item.status == Status.FAILURE -%}
-        has-text-danger
-        {%- elif item.status == Status.INCONCLUSIVE -%}
-        has-text-warning
-        {%- endif -%}" id="{{ item.key }}">
-            <a href="#{{item.key}}">{{ item.key }}</a>
-        </h2>
-        </div>
-
-        <div class="block">
-        {% for plot in item.generic_plots %}
-        <img src="{{plot}}" style="display: block"/>
-        {% endfor %}
-        </div>
-
-        <hr>
-        
-        <div class="block" x-data="{open: 0}">
-            <div class="tags">
-            {% for check in item.checks %}
-            <a @click="open = open == {{loop.index}} ? 0 : {{loop.index}}" :class="open == {{loop.index}} ? 'active' : ''"
-            {% if check.is_disabled %}
-            class="check tag is-light"
-            {% elif check.status == Status.SUCCESS %}
-            class="check tag is-success"
-            {% elif check.status == Status.FAILURE %}
-            class="check tag is-danger"
-            {% elif check.status == Status.INCONCLUSIVE %}
-            class="check tag is-warning"
-            {% endif %}
-            >
-                {#{{ check.status.icon | emojize }}#}
-                {% if check.is_disabled %}
-                    {{ check.status.icon | emojize }}
-                {% endif %}
-                {{ check }}
-            </a>
-
-            {% endfor %}
-            </div>
-            {% for check in item.checks %}
-            <div class="container">
-            <div x-show="open == {{loop.index}}" class="notification">
-                {% if not check.is_applicable %}
-                    {{check}} is not applicable
-                {% else %}
-                {{ check.label.strip() | replace("\n", "<br>") | replace("---", "<hr class='check_rule'>") }}
-                {% endif %}
-            </div>
-            </div>
-            {% endfor %}
-        </div>
-
-
-    </div>
-    </div>
-    {% endfor %}
-    </div>
-    
+    <script id="report-data" type="application/json">{{ {"items": report_index, "tags": tags} | tojson }}</script>
+    <script>{{ static_content("report.js") }}</script>
 {% endblock %}

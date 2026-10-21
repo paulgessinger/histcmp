@@ -1,9 +1,6 @@
 import warnings
-import io
-import re
-import base64
 import dataclasses
-import urllib.parse
+from pathlib import Path
 from typing import Any, Optional
 
 #  from abc import ABC, abstractmethod, abstractproperty
@@ -273,7 +270,8 @@ def _value_panels(va, vb, label_a, label_b):
 
 
 def _new_2d_panel(a: hist.Hist, title: str):
-    fig, ax = pyplot.subplots(figsize=(6, 4.5), constrained_layout=True)
+    fig, ax = pyplot.subplots(figsize=(6, 4.5))
+    fig.subplots_adjust(left=0.14, right=0.90, bottom=0.14, top=0.83)
     ax.set_xlabel(a.axes[0].name)
     ax.set_ylabel(a.axes[1].name)
     ax.set_title(title)
@@ -369,6 +367,8 @@ def plot_3d_scatter(
             vmin=vmin,
             vmax=vmax,
             alpha=0.5,
+            edgecolors="none",
+            linewidths=0,
         )
         fig.colorbar(sc, ax=ax, label=a.label or "entries", shrink=0.7, pad=0.1)
         figs.append((suffix, fig))
@@ -387,6 +387,8 @@ def plot_3d_scatter(
         cmap="RdBu_r",
         norm=data.norm,
         alpha=0.7,
+        edgecolors="none",
+        linewidths=0,
     )
     fig.colorbar(sc, ax=ax, label=data.label, shrink=0.7, pad=0.1)
     figs.append((f"_{comparison}", fig))
@@ -477,55 +479,16 @@ class PlotSpec:
     renderer: Optional[str] = None  # only for "3d"
     comparison: str = "ratio"
 
-    @property
-    def raster(self) -> bool:
-        # matplotlib does not reliably honor rasterized=True for 3D
-        # collections, so 3D figures are embedded and saved as raster images
-        return self.kind == "3d"
-
-
-def svg_encode(svg):
-    # Stackoverflow: https://stackoverflow.com/a/66718254/1928287
-    # Ref: https://bl.ocks.org/jennyknuth/222825e315d45a738ed9d6e04c7a88d0
-    # Encode an SVG string so it can be embedded into a data URL.
-    def repl(m):
-        c = m.group()
-        return "'" if c == '"' else "%" + format(ord(c), "x")
-
-    svg_enc = re.sub(r'["%#{}<>]', repl, str(svg))
-    return " ".join(svg_enc.split())  # Compact whitespace
-
-
-def plot_to_uri(figure, raster: bool = False):
-    buf = io.BytesIO()
-
-    if raster:
-        # matplotlib does not reliably honor rasterized=True for 3D
-        # collections, so embed such figures as PNG to keep the report small
-        figure.savefig(buf, format="png", dpi=120)
-        data = base64.b64encode(buf.getvalue()).decode("utf8")
-        return f"data:image/png;base64,{data}"
-
-    figure.savefig(buf, format="svg")
-
-    #         datauri = f"data:image/svg+xml;base64,{base64.b64encode(buf.getvalue()).decode('utf8')}"
-
-    data = buf.getvalue().decode("utf8")
-    #  data = urllib.parse.quote(data)
-    data = svg_encode(data)
-    datauri = f"data:image/svg+xml;utf8,{data}"
-    return datauri
-
-
-def render_plots(specs, key, label_a, label_b, plot_dir, format: str):
+def render_plots(specs, key, label_a, label_b, plot_dir: Path) -> list[Path]:
     """
     Render the plot specs produced by ComparisonItem.plot_specs and return the
-    data URIs for embedding in the report.
+    paths to PNG files. Each figure is saved once and linked from the report.
 
     This function only handles picklable inputs and does not need ROOT, so it
     can run in a worker process.
     """
-    uris = []
+    plot_dir.mkdir(exist_ok=True, parents=True)
+    paths = []
 
     for spec in specs:
         if spec.kind == "eff":
@@ -571,18 +534,13 @@ def render_plots(specs, key, label_a, label_b, plot_dir, format: str):
 
         for fig_suffix, fig in figures:
             try:
-                uris.append(plot_to_uri(fig, raster=spec.raster))
-                if plot_dir is not None:
-                    safe_key = key.replace("/", "_") + fig_suffix
-                    if spec.raster:
-                        # vector formats explode for 3D collections, save a
-                        # raster image regardless of the requested format
-                        fig.savefig(plot_dir / f"{safe_key}.png", dpi=120)
-                    else:
-                        fig.savefig(plot_dir / f"{safe_key}.{format}")
+                safe_key = key.replace("/", "_") + fig_suffix
+                path = plot_dir / f"{safe_key}.png"
+                fig.savefig(path, format="png", dpi=120)
+                paths.append(path)
             except ValueError as e:
                 rich.print(f"ERROR during plot: {e}")
+            finally:
+                pyplot.close(fig)
 
-            pyplot.close(fig)
-
-    return uris
+    return paths

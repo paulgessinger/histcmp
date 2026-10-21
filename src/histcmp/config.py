@@ -1,7 +1,14 @@
 from enum import Enum
+from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 import pydantic
+import yaml
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10
+    import tomli as tomllib
 
 
 class BaseModel(pydantic.BaseModel):
@@ -57,6 +64,30 @@ class PlotConfig(BaseModel):
         return self.comparison_2d3d or self.comparison
 
 
+class ReportConfig(BaseModel):
+    # Case-sensitive glob patterns against the full histogram key.
+    # Any pattern can match; tags may overlap.
+    tags: Dict[str, List[str]] = pydantic.Field(
+        default_factory=dict,
+        validation_alias=pydantic.AliasChoices("tags", "categories"),
+    )
+
+
 class Config(BaseModel):
     checks: Dict[str, Dict[str, Optional[Dict[str, Any]]]]
     plots: PlotConfig = PlotConfig()
+    report: ReportConfig = pydantic.Field(default_factory=ReportConfig)
+
+    @classmethod
+    def from_file(cls, path: Path) -> "Config":
+        """Read TOML for .toml files, otherwise retain YAML parsing."""
+        try:
+            if path.suffix.lower() == ".toml":
+                with path.open("rb") as stream:
+                    data = tomllib.load(stream)
+            else:
+                with path.open(encoding="utf-8") as stream:
+                    data = yaml.safe_load(stream)
+            return cls.model_validate(data)
+        except (OSError, ValueError, yaml.YAMLError) as exc:
+            raise ValueError(f"Cannot load configuration {path}: {exc}") from exc

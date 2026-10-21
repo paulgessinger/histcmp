@@ -107,6 +107,11 @@ class CompatCheck(ABC):
     def __str__(self) -> str:
         return self.name
 
+    @property
+    def sort_value(self) -> Optional[float]:
+        """Larger values indicate worse agreement, within this check only."""
+        return None
+
     def __reduce__(self):
         # Checks hold ROOT histograms, which cannot be pickled. Crossing a
         # process boundary therefore turns a check into its CheckSummary,
@@ -124,6 +129,8 @@ class CompatCheck(ABC):
                 bool(self.is_valid) if applicable else False,
                 bool(self.is_disabled),
                 self.label if applicable else "",
+                None,
+                self.sort_value if applicable and not self.is_disabled else None,
             ),
         )
 
@@ -137,6 +144,7 @@ class CheckSummary:
     is_disabled: bool
     label: str
     plot: Optional[Path] = None
+    sort_value: Optional[float] = None
 
     def __str__(self) -> str:
         return self.name
@@ -167,6 +175,13 @@ class CompositeCheck(CompatCheck):
 
 
 class ScoreThresholdCheck(CompatCheck):
+    @property
+    def sort_value(self) -> Optional[float]:
+        if not self.is_applicable or self.is_disabled:
+            return None
+        score = float(self.score)
+        return -score if self.op in (operator.gt, operator.ge) else score
+
     def __init__(self, threshold: float, op, **kwargs):
         self.threshold = threshold
         self.op = op
@@ -356,6 +371,12 @@ def _project_profile(item_a, item_b):
 
 
 class RatioCheck(CompatCheck):
+    @property
+    def sort_value(self) -> Optional[float]:
+        if not self.is_applicable or self.is_disabled:
+            return None
+        return float(numpy.mean(numpy.abs(self.ratio_pull) >= self.threshold))
+
     def __init__(self, item_a, item_b, threshold: float = 3, **kwargs):
         self.ratio = None
         self.ratio_err = None
@@ -427,6 +448,15 @@ class RatioCheck(CompatCheck):
 
 
 class ResidualCheck(CompatCheck):
+    @property
+    def sort_value(self) -> Optional[float]:
+        if not self.applicable or self.is_disabled:
+            return None
+        val, _, pull = self._pulls
+        if val.size == 0:
+            return None
+        return float(numpy.sum(pull[~numpy.isnan(pull)] >= self.threshold) / val.size)
+
     def __init__(self, item_a, item_b, threshold=1, **kwargs):
         self.threshold = threshold
         self.item_a = item_a

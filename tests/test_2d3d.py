@@ -1,9 +1,39 @@
+import io
+import json
+import pickle
+from html.parser import HTMLParser
+from pathlib import Path
+from urllib.parse import unquote
+
 import numpy
 import pytest
 import typer
 import hist
 
 import histcmp.cli
+
+
+def _report_images(output):
+    class Images(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.sources = []
+
+        def handle_starttag(self, tag, attrs):
+            if tag == "img":
+                attributes = dict(attrs)
+                assert "src" not in attributes
+                self.sources.append(attributes["data-src"])
+
+    parser = Images()
+    parser.feed(output.read_text())
+    assert parser.sources
+    assert all(not src.startswith(("data:", "/")) for src in parser.sources)
+    paths = [(output.parent / unquote(src)).resolve() for src in parser.sources]
+    for path in paths:
+        assert path.suffix == ".png"
+        assert path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+    return parser.sources, paths
 
 
 def _fill_objects(rnd, shift: float):
@@ -55,8 +85,8 @@ def root_files(tmp_path_factory):
 @pytest.mark.parametrize("renderer_3d", ["scatter", "voxel"])
 @pytest.mark.parametrize("jobs", [1, 2])
 def test_identical_files_2d3d(root_files, tmp_path, renderer_3d, jobs):
-    output = tmp_path / "report.html"
-    plots = tmp_path / "plots"
+    output = tmp_path / "reports" / "report.html"
+    plots = tmp_path / "plot images #1"
 
     histcmp.cli.main(
         root_files["nominal"],
@@ -77,6 +107,40 @@ def test_identical_files_2d3d(root_files, tmp_path, renderer_3d, jobs):
         for panel in ["monitored", "reference", "pull"]
     )
     assert plot_files == sorted(expected)
+    sources, paths = _report_images(output)
+    assert all(src.startswith("../plot%20images%20%231/") for src in sources)
+    assert sorted(paths) == sorted(plots.glob("*.png"))
+
+
+@pytest.mark.parametrize("jobs", [1, 2])
+@pytest.mark.parametrize("extension", ["yaml", "toml"])
+def test_default_plot_directory(root_files, tmp_path, monkeypatch, jobs, extension):
+    from test_report import ReportParser
+
+    monkeypatch.chdir(tmp_path)
+    output = Path("reports") / "comparison.html"
+    config = tmp_path / f"config.{extension}"
+    config.write_text(
+        'checks:\n  "*":\n    IntegralCheck:\n      threshold: 3\n'
+        'report:\n  tags:\n    Example: ["th*"]\n'
+        if extension == "yaml" else
+        '[checks."*".IntegralCheck]\nthreshold = 3\n'
+        '[report.tags]\nExample = ["th*"]\n'
+    )
+    histcmp.cli.main(
+        root_files["nominal"],
+        root_files["same"],
+        output=output,
+        config_path=config,
+        jobs=jobs,
+        _filter="^th1$",
+    )
+    sources, paths = _report_images(output)
+    assert sources == ["comparison_plots/th1.png"]
+    assert paths == [(output.parent / "comparison_plots" / "th1.png").resolve()]
+    metadata = json.loads(ReportParser(output.read_text()).metadata)
+    assert metadata["items"][0]["tags"] == ["Example"]
+    assert metadata["items"][0]["checks"][0]["sortValue"] == 0
 
 
 def test_comparison_metric_fallback():
@@ -209,6 +273,28 @@ def test_checks_native_nd(hist_pairs, key):
                 assert not check.is_valid
 
 
+@pytest.mark.parametrize("name", ["Chi2Test", "KolmogorovTest", "IntegralCheck", "RatioCheck", "ResidualCheck"])
+def test_check_ranking_survives_worker_serialization(hist_pairs, name):
+    from histcmp import checks
+
+    cls = getattr(checks, name)
+    same = cls(*hist_pairs["same"]["th1"])
+    shifted = cls(*hist_pairs["shifted"]["th1"])
+    assert same.sort_value is not None
+    if shifted.is_applicable:
+        assert shifted.sort_value >= same.sort_value
+    else:
+        assert shifted.sort_value is None
+    summary = pickle.loads(pickle.dumps(shifted))
+    if shifted.sort_value is None:
+        assert summary.sort_value is None
+    else:
+        assert summary.sort_value == pytest.approx(shifted.sort_value)
+    assert summary.status == shifted.status
+    disabled = pickle.loads(pickle.dumps(cls(*hist_pairs["shifted"]["th1"], disabled=True)))
+    assert disabled.sort_value is None
+
+
 @pytest.mark.parametrize("key", ["th1", "th2", "tp2", "th3", "tp3"])
 def test_get_bin_content_error_matches_root(hist_pairs, key):
     from histcmp.root_helpers import get_bin_content_error
@@ -285,9 +371,9 @@ def test_plot_functions(plotter, case):
     assert [suffix for suffix, _ in figs] == ["_monitored", "_reference", "_ratio"]
 
     for _, fig in figs:
-        uri = plot.plot_to_uri(fig, raster=plotter != "plot_2d")
-        assert uri.startswith("data:image/")
-        assert len(uri) > 100
+        image = io.BytesIO()
+        fig.savefig(image, format="png", dpi=120)
+        assert image.getvalue().startswith(b"\x89PNG\r\n\x1a\n")
 
         pyplot.close(fig)
 
@@ -331,10 +417,48 @@ def test_plot_1d_comparison_metrics(comparison):
     b = _make_hist((10,), vb)
 
     fig, (ax, rax) = plot.plot_1d(a, b, "monitored", "reference", comparison)
-    uri = plot.plot_to_uri(fig)
-    assert uri.startswith("data:image/")
+    image = io.BytesIO()
+    fig.savefig(image, format="png", dpi=120)
+    assert image.getvalue().startswith(b"\x89PNG\r\n\x1a\n")
 
     pyplot.close(fig)
+
+
+@pytest.mark.parametrize("kind,shape", [("1d", (4,)), ("2d", (4, 4)), ("3d", (3, 3, 3))])
+def test_report_renders_each_plot_once(tmp_path, monkeypatch, kind, shape):
+    from matplotlib.figure import Figure
+    from histcmp.compare import Comparison, ComparisonItem
+    from histcmp.plot import PlotSpec
+    from histcmp.report import make_report
+
+    histogram = _make_hist(shape, numpy.ones(shape))
+    spec = PlotSpec(kind, histogram, histogram.copy(), renderer="scatter")
+    item = ComparisonItem("directory/hist #1", None, None)
+    monkeypatch.setattr(item, "plot_specs", lambda: [spec])
+    comparison = Comparison(
+        "a.root", "b.root", label_monitored="a", label_reference="b", items=[item]
+    )
+    saved = []
+    savefig = Figure.savefig
+
+    def record_save(figure, path, *args, **kwargs):
+        saved.append(path)
+        return savefig(figure, path, *args, **kwargs)
+
+    monkeypatch.setattr(Figure, "savefig", record_save)
+    output = tmp_path / "report.html"
+    make_report(comparison, output)
+    _, paths = _report_images(output)
+    assert len(paths) == (1 if kind == "1d" else 3)
+    assert saved == paths
+    assert item.generic_plots == paths
+
+    # Reassembling HTML must reuse the files, including when the report moves.
+    moved_output = tmp_path / "nested" / "report.html"
+    make_report(comparison, moved_output)
+    _, moved_paths = _report_images(moved_output)
+    assert moved_paths == paths
+    assert saved == paths
 
 
 def test_voxel_fallback_to_scatter(capsys):

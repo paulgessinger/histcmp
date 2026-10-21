@@ -4,12 +4,11 @@ ROOT files once, then processes items scheduled by name — reading the
 objects, running the configured checks and rendering the plots. ROOT objects
 cannot be pickled, so only key strings and paths go in; the returned checks
 turn into their picklable CheckSummary on the way back (CompatCheck.__reduce__).
-The per-run constants (config, labels, plot directory, format) are shipped
+The per-run constants (config, labels, plot directory) are shipped
 once via the pool initializer instead of with every item.
 """
 
 from pathlib import Path
-from typing import Optional
 
 _rf_a = None
 _rf_b = None
@@ -17,7 +16,6 @@ _config = None
 _label_a = None
 _label_b = None
 _plot_dir = None
-_format = None
 
 
 def init_worker(
@@ -26,8 +24,7 @@ def init_worker(
     config,
     label_a: str,
     label_b: str,
-    plot_dir: Optional[Path],
-    format: str,
+    plot_dir: Path,
 ):
     import matplotlib
 
@@ -38,14 +35,13 @@ def init_worker(
     ROOT.gROOT.SetBatch(True)
     ROOT.gErrorIgnoreLevel = ROOT.kWarning
 
-    global _rf_a, _rf_b, _config, _label_a, _label_b, _plot_dir, _format
+    global _rf_a, _rf_b, _config, _label_a, _label_b, _plot_dir
     _rf_a = ROOT.TFile.Open(file_a)
     _rf_b = ROOT.TFile.Open(file_b)
     _config = config
     _label_a = label_a
     _label_b = label_b
     _plot_dir = plot_dir
-    _format = format
 
 
 def _read(rf, path: str):
@@ -72,7 +68,6 @@ def process_item(key: str, path_a: str, path_b: str):
         _label_a,
         _label_b,
         _plot_dir,
-        _format,
     )
 
     return checks, plots

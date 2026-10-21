@@ -9,10 +9,9 @@ from rich.rule import Rule
 from rich.pretty import Pretty
 from rich.emoji import Emoji
 import jinja2
-import yaml
 
 from histcmp.console import fail, info, console
-from histcmp.report import make_report
+from histcmp.report import make_report, report_plot_directory
 from histcmp.checks import Status
 from histcmp.config import Config, Renderer3D, ComparisonMetric
 from histcmp.github import is_github_actions, github_actions_marker
@@ -46,7 +45,7 @@ def main(
             "--config", "-c", 
             dir_okay=False, 
             exists=True,
-            help="Path to configuration file"
+            help="Path to YAML or TOML configuration file (.toml selects TOML)"
         )
     ] = None,
     output: Annotated[
@@ -62,7 +61,7 @@ def main(
         typer.Option(
             "-p", "--plots", 
             file_okay=False,
-            help="Directory to save comparison plots"
+            help="Directory to save PNG plots (default: <report-stem>_plots beside the report)"
         )
     ] = None,
     label_monitored: Annotated[
@@ -93,9 +92,9 @@ def main(
     format: Annotated[
         str,
         typer.Option(
-            help="Output format for plots (pdf, png, etc.)"
+            help="Output format for plots (only png is supported)"
         )
-    ] = "pdf",
+    ] = "png",
     jobs: Annotated[
         int,
         typer.Option(
@@ -144,6 +143,11 @@ def main(
         )
     ] = True,
 ):
+    if format != "png":
+        raise typer.BadParameter(
+            "Only PNG plots are supported", param_hint="--format"
+        )
+
     try:
         import ROOT
     except ImportError:
@@ -173,8 +177,10 @@ def main(
             }
         )
     else:
-        with config_path.open() as fh:
-            config = Config(**yaml.safe_load(fh))
+        try:
+            config = Config.from_file(config_path)
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc), param_hint="--config") from exc
 
     if renderer_3d is not None:
         config.plots.renderer_3d = renderer_3d
@@ -196,7 +202,8 @@ def main(
         # per-item pipeline (which also renders) is not worth spinning up.
         if output is None:
             jobs = 1
-        if jobs > 1 and plots is not None:
+        else:
+            plots = report_plot_directory(output, plots)
             plots.mkdir(exist_ok=True, parents=True)
 
         comparison = compare(
@@ -210,7 +217,6 @@ def main(
             label_monitored=label_monitored,
             label_reference=label_reference,
             plot_dir=plots,
-            format=format,
         )
 
         comparison.label_monitored = label_monitored
@@ -303,7 +309,7 @@ def main(
         )
 
         if output is not None:
-            make_report(comparison, output, plots, format=format)
+            make_report(comparison, output, plots, report_config=config.report)
 
         if status != Status.SUCCESS:
             raise typer.Exit(1)

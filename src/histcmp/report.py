@@ -1,9 +1,14 @@
 from datetime import datetime
 from pathlib import Path
+import os
+import math
+import sys
 import shutil
 from typing import Union, Optional
 import contextlib
 import re
+from urllib.parse import quote
+from fnmatch import fnmatchcase
 from rich.progress import track
 from rich.emoji import Emoji
 
@@ -11,6 +16,7 @@ import jinja2
 
 from histcmp.compare import Comparison
 from histcmp.checks import Status
+from histcmp.config import ReportConfig
 from histcmp.console import console
 from histcmp.root_helpers import push_root_level
 from histcmp import icons
@@ -137,19 +143,55 @@ def copy_static(output: Path) -> None:
     shutil.copytree(static, dest)
 
 
+def report_plot_directory(output: Path, plot_dir: Optional[Path] = None) -> Path:
+    if plot_dir is None:
+        plot_dir = output.with_name(f"{output.stem}_plots")
+    return plot_dir.resolve()
+
+
+def check_metadata(check):
+    value = check.sort_value if check.is_applicable and not check.is_disabled else None
+    if value is not None:
+        value = float(value)
+        if math.isnan(value):
+            value = None
+        elif math.isinf(value):
+            value = math.copysign(sys.float_info.max, value)
+    return {
+        "name": str(check), "status": check.status.name.lower(),
+        "disabled": bool(check.is_disabled),
+        "label": check.label if check.is_applicable else "Not applicable",
+        "sortValue": value,
+    }
+
+
 def make_report(
     comparison: Comparison,
     output: Path,
     plot_dir: Optional[Path] = None,
-    format: str = "pdf",
+    report_config: Optional[ReportConfig] = None,
 ):
     output.parent.mkdir(exist_ok=True, parents=True)
-    if plot_dir is not None:
-        plot_dir.mkdir(exist_ok=True, parents=True)
+    plot_dir = report_plot_directory(output, plot_dir)
+    plot_dir.mkdir(exist_ok=True, parents=True)
 
     #  copy_static(output)
 
     env = make_environment()
+    report_config = report_config or ReportConfig()
+    index = [
+        {
+            "id": f"plot-{i}",
+            "title": item.key,
+            "status": item.status.name.lower(),
+            "checks": [check_metadata(check) for check in item.checks],
+            "tags": [
+                name for name, patterns in report_config.tags.items()
+                if any(fnmatchcase(item.key, pattern) for pattern in patterns)
+            ],
+        }
+        for i, item in enumerate(comparison.items)
+    ]
 
     import ROOT
 
@@ -158,12 +200,25 @@ def make_report(
             comparison.items, description="Making plots", console=console
         ):
             item.ensure_plots(
-                output,
                 plot_dir,
                 comparison.label_monitored,
                 comparison.label_reference,
-                format=format,
             )
 
+    def plot_url(path: Path) -> str:
+        relative = Path(os.path.relpath(path.resolve(), output.parent.resolve()))
+        return quote(relative.as_posix())
+
     with output.open("w") as fh:
-        fh.write(env.get_template("main.html.j2").render(comparison=comparison))
+        fh.write(
+            env.get_template("main.html.j2").render(
+                comparison=comparison,
+                plot_url=plot_url,
+                report_index=index,
+                tags=list(report_config.tags),
+                totals={status.name.lower(): sum(item.status == status for item in comparison.items)
+                        for status in Status},
+                added=sorted(comparison.a_only),
+                missing=sorted(comparison.b_only),
+            )
+        )
