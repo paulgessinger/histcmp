@@ -54,6 +54,78 @@ def check_report(browser, path):
     wait_visible_images()
     page.screenshot(path=str(path.with_suffix(".desktop.png")))
 
+    # Counts reflect the other active filters, without double counting overlaps.
+    def counts(expected, selector):
+        for value in ["", "failure", "success", "inconclusive"]:
+            total = sum(not value or item["status"] == value for item in expected)
+            expect(page.locator(f'[{selector}="{value}"]')).to_have_text(str(total))
+
+    counts(items, "data-count-status")
+    expect(page.locator(".report-summary")).to_contain_text(f"{len(items)} compared")
+    for index, tag in enumerate(tags):
+        expect(page.locator(f'[data-count-tag="tag-{index}"]')).to_have_text(str(sum(tag in i["tags"] for i in items)))
+    assert page.locator('[data-status="failure"]').bounding_box()["height"] <= 32
+    if tags:
+        page.locator('#tag-filter input[value="tag-0"]').check()
+        counts([i for i in items if tags[0] in i["tags"]], "data-count-status")
+        page.locator('[data-status="failure"]').click()
+        for index, tag in enumerate(tags):
+            expect(page.locator(f'[data-count-tag="tag-{index}"]')).to_have_text(str(sum(tag in i["tags"] and i["status"] == "failure" for i in items)))
+        page.locator("#clear-filters").click()
+
+    # Sorting uses one metric at a time, with missing scores last.
+    severity = {"failure": 0, "inconclusive": 1, "success": 2}
+    page.locator("#sort-order").select_option("failures")
+    results(sorted(items, key=lambda i: (severity[i["status"]], i["title"])))
+    options = page.locator('#sort-order option').evaluate_all("els => els.map(el => el.value).filter(v => v.startsWith('check:'))")
+    assert options
+    for option in options:
+        name = option.removeprefix("check:")
+        def rank(item):
+            score = next((c["sortValue"] for c in item["checks"] if c["name"] == name), None)
+            return (score is None, -score if score is not None else 0, item["title"])
+        page.locator("#sort-order").select_option(option)
+        ordered = sorted(items, key=rank)
+        results(ordered)
+    page.locator('button[data-view="overview"]').click()
+    results(ordered)
+    expect(page.locator(".overview-title").first).to_be_visible()
+    assert page.locator("#plot-grid img").count() == 0
+    assert page.locator(".overview-title").count() < 50
+    saved = page.url
+    assert parse_qs(urlsplit(saved).query)["view"] == ["overview"]
+    page.reload()
+    results(ordered)
+    expect(page.locator("#sort-order")).to_have_value(options[-1])
+    expect(page.locator('button[data-view="overview"]')).to_have_attribute("aria-pressed", "true")
+    page.screenshot(path=str(path.with_suffix(".overview.png")))
+    page.locator(".overview-title").first.click()
+    expect(page.locator('button[data-view="plots"]')).to_have_attribute("aria-pressed", "true")
+    expect(page.locator(f'#{ordered[0]["id"]}')).to_be_visible()
+    page.locator("#sort-order").select_option("name")
+    page.evaluate("window.scrollTo(0, 0)")
+    results(items)
+
+    # The modal follows filtered order and preserves the underlying report URL.
+    link = page.locator('#plot-grid [data-image-index]').first
+    expect(link).to_be_visible()
+    before = page.url
+    source = link.get_attribute("href")
+    link.click()
+    expect(page.locator("#plot-viewer")).to_be_visible()
+    expect(page.locator("#viewer-original")).to_have_attribute("href", source)
+    expect(page.locator("#viewer-previous")).to_be_disabled()
+    page.wait_for_function("document.querySelector('.viewer-image')?.naturalWidth > 0")
+    page.screenshot(path=str(path.with_suffix(".viewer.png")))
+    page.keyboard.press("ArrowRight")
+    expect(page.locator("#viewer-position")).to_contain_text("2 / ")
+    page.keyboard.press("ArrowLeft")
+    expect(page.locator("#viewer-position")).to_contain_text("1 / ")
+    page.keyboard.press("Escape")
+    expect(page.locator("#plot-viewer")).not_to_be_visible()
+    expect(link).to_be_focused()
+    assert page.url == before
+
     # Scrolling reaches previously unmounted cards and releases distant cards.
     first = items[0]["id"]
     page.locator(f"#{first} .check summary").first.click()
@@ -144,6 +216,15 @@ def check_report(browser, path):
     expect(page.locator(f"#{first}")).to_be_attached()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     assert page.locator("#plot-grid").evaluate("el => getComputedStyle(el).gridTemplateColumns.split(' ').length") == 1
+    expect(page.locator("#filter-secondary")).not_to_be_visible()
+    page.locator("#toggle-filters").click()
+    expect(page.locator("#filter-secondary")).to_be_visible()
+    expect(page.locator("#toggle-filters")).to_have_attribute("aria-expanded", "true")
+    page.locator("#toggle-filters").click()
+    page.evaluate("window.scrollTo(0, 1000)")
+    expect(page.locator('[data-status="failure"]')).to_be_visible()
+    assert abs(page.locator(".report-controls").bounding_box()["y"]) < 2
+    page.evaluate("window.scrollTo(0, 0)")
     wait_visible_images()
     page.screenshot(path=str(path.with_suffix(".mobile.png")))
     assert not errors, errors

@@ -1,5 +1,6 @@
 import io
 import json
+import pickle
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import unquote
@@ -139,6 +140,7 @@ def test_default_plot_directory(root_files, tmp_path, monkeypatch, jobs, extensi
     assert paths == [(output.parent / "comparison_plots" / "th1.png").resolve()]
     metadata = json.loads(ReportParser(output.read_text()).metadata)
     assert metadata["items"][0]["tags"] == ["Example"]
+    assert metadata["items"][0]["checks"][0]["sortValue"] == 0
 
 
 def test_comparison_metric_fallback():
@@ -269,6 +271,28 @@ def test_checks_native_nd(hist_pairs, key):
             check = ctype(*shifted)
             if check.is_applicable:
                 assert not check.is_valid
+
+
+@pytest.mark.parametrize("name", ["Chi2Test", "KolmogorovTest", "IntegralCheck", "RatioCheck", "ResidualCheck"])
+def test_check_ranking_survives_worker_serialization(hist_pairs, name):
+    from histcmp import checks
+
+    cls = getattr(checks, name)
+    same = cls(*hist_pairs["same"]["th1"])
+    shifted = cls(*hist_pairs["shifted"]["th1"])
+    assert same.sort_value is not None
+    if shifted.is_applicable:
+        assert shifted.sort_value >= same.sort_value
+    else:
+        assert shifted.sort_value is None
+    summary = pickle.loads(pickle.dumps(shifted))
+    if shifted.sort_value is None:
+        assert summary.sort_value is None
+    else:
+        assert summary.sort_value == pytest.approx(shifted.sort_value)
+    assert summary.status == shifted.status
+    disabled = pickle.loads(pickle.dumps(cls(*hist_pairs["shifted"]["th1"], disabled=True)))
+    assert disabled.sort_value is None
 
 
 @pytest.mark.parametrize("key", ["th1", "th2", "tp2", "th3", "tp3"])

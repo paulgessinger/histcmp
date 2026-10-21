@@ -10,18 +10,40 @@ Search titles performs a case-insensitive substring search on histogram names
 Clear filters restores all results. Results form one continuous scrolling grid
 that adapts from three columns on a
 wide display to one on a phone. All, Failed, Passed, and Inconclusive are visible
-status buttons.
+status buttons with compact padding. Filters stay visible while scrolling; on
+phones, Tags & sorting expands the secondary controls.
 
 Only cards near the viewport are mounted; lightweight placeholders preserve the
 scrolling space for the rest. Images are requested as they approach the
 viewport; browsers without `IntersectionObserver` use native lazy loading.
-Click an image to open the full-size PNG, expand a check to read its details,
-or copy a histogram heading's link to share its position in the report.
+Click an image for a larger in-page viewer. Left/right arrow keys move through
+images in the current filtered order; Escape closes it and returns focus.
+“Open original PNG” opens the image separately. Expand a check to read its
+details, or copy a histogram heading's link to share its position.
 
-Search text, selected tags, Untagged, and status are stored in the URL. Reloading
+Search text, selected tags, Untagged, status, sorting, and view are stored in the URL. Reloading
 or opening a shared URL restores those filters, including with `file://` reports.
 Plot heading links keep the filters and add a fragment identifying the plot.
-Clear filters removes the filter parameters.
+Clear filters removes the filter parameters but keeps the chosen sorting and view.
+
+## Summary, sorting, and overview
+
+The full comparison summary always shows totals before report filters. Expand
+Added or Missing to see objects present only in the monitored or reference file.
+Status counts respect title search and selected tags; tag counts respect search
+and status. Each count describes that individual choice, so overlapping tags do
+not add up to the total.
+
+Sort alphabetically, put failures first, or rank by an individual check. P-value
+checks put the lowest values first, integral checks use the largest absolute
+pull, and ratio/residual checks use the fraction of bins exceeding their configured
+threshold. Unavailable and disabled scores come last; names break ties. Scores
+from different checks are never combined.
+
+Switch to Overview for compact rows of names, status, tags, and check results,
+without loading plot images. Hover a check badge for its numerical details.
+Click a histogram name to return to its plot. Both views keep continuous
+scrolling and only mount nearby entries; neither uses pagination.
 
 ## Tags
 
@@ -81,8 +103,9 @@ use `report.tags` for new configurations.
 With Playwright and its Chromium browser installed in a Python environment, run
 `python tests/report_browser.py report/index.html`. Use a report with more than
 24 histogram cards, or an empty report. This checks `file://` loading, filtering,
-continuous scrolling, URL filter restoration, mobile layout, and the lazy-loading fallback, and writes
-desktop/mobile screenshots beside nonempty reports.
+continuous scrolling, filter counts, sorting, overview, image viewer, URL restoration,
+mobile layout, and the lazy-loading fallback, and writes
+desktop, mobile, overview, and viewer screenshots beside nonempty reports.
 
 ## Preview
 
@@ -91,3 +114,9 @@ The ACTS track-fitting comparison on desktop and mobile:
 ![Desktop report](images/report-desktop.png)
 
 ![Mobile report](images/report-mobile.png)
+
+Compact overview and in-page viewer:
+
+![Report overview](images/report-overview.png)
+
+![Image viewer](images/report-viewer.png)

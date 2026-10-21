@@ -1,6 +1,8 @@
 from datetime import datetime
 from pathlib import Path
 import os
+import math
+import sys
 import shutil
 from typing import Union, Optional
 import contextlib
@@ -147,6 +149,22 @@ def report_plot_directory(output: Path, plot_dir: Optional[Path] = None) -> Path
     return plot_dir.resolve()
 
 
+def check_metadata(check):
+    value = check.sort_value if check.is_applicable and not check.is_disabled else None
+    if value is not None:
+        value = float(value)
+        if math.isnan(value):
+            value = None
+        elif math.isinf(value):
+            value = math.copysign(sys.float_info.max, value)
+    return {
+        "name": str(check), "status": check.status.name.lower(),
+        "disabled": bool(check.is_disabled),
+        "label": check.label if check.is_applicable else "Not applicable",
+        "sortValue": value,
+    }
+
+
 def make_report(
     comparison: Comparison,
     output: Path,
@@ -166,6 +184,7 @@ def make_report(
             "id": f"plot-{i}",
             "title": item.key,
             "status": item.status.name.lower(),
+            "checks": [check_metadata(check) for check in item.checks],
             "tags": [
                 name for name, patterns in report_config.tags.items()
                 if any(fnmatchcase(item.key, pattern) for pattern in patterns)
@@ -197,5 +216,9 @@ def make_report(
                 plot_url=plot_url,
                 report_index=index,
                 tags=list(report_config.tags),
+                totals={status.name.lower(): sum(item.status == status for item in comparison.items)
+                        for status in Status},
+                added=sorted(comparison.a_only),
+                missing=sorted(comparison.b_only),
             )
         )

@@ -7,7 +7,7 @@ from pydantic import ValidationError
 from histcmp.checks import CheckSummary, Status
 from histcmp.compare import Comparison, ComparisonItem
 from histcmp.config import Config, ReportConfig
-from histcmp.report import make_report
+from histcmp.report import make_report, check_metadata
 
 
 class ReportParser(HTMLParser):
@@ -88,3 +88,25 @@ def test_report_config_compatibility():
     assert legacy.model_dump() == {"tags": {"Tracking": ["*track*"]}}
     with pytest.raises(ValidationError):
         ReportConfig(tags={"Tracking": "*track*"})
+
+
+def test_check_rank_json_and_disabled_checks():
+    check = CheckSummary("IntegralTest", Status.FAILURE, True, False, False, "Infinite pull", sort_value=float("inf"))
+    metadata = check_metadata(check)
+    assert metadata["sortValue"] > 1e300
+    json.dumps(metadata, allow_nan=False)
+    check.sort_value = float("nan")
+    assert check_metadata(check)["sortValue"] is None
+    check.sort_value = 3
+    check.is_disabled = True
+    assert check_metadata(check)["sortValue"] is None
+
+
+def test_added_and_missing_summary(tmp_path):
+    output = tmp_path / "summary.html"
+    comparison = Comparison("monitored", "reference", a_only={("new<plot>", "TH1F")}, b_only={("old<plot>", "TH2F")})
+    make_report(comparison, output)
+    html = output.read_text()
+    assert "1 added" in html and "1 missing" in html
+    assert "new&lt;plot&gt;" in html and "old&lt;plot&gt;" in html
+    assert "new<plot>" not in html
