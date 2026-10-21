@@ -1,6 +1,6 @@
 [project]
 name = "histcmp"
-version = "0.10.0"
+dynamic = ["version"]
 description = "Compare histograms"
 authors = [{name="Paul Gessinger", email="hello@paulgessinger.com"}]
 license = "MIT"
@@ -24,8 +24,11 @@ dependencies = [
 histcmp = 'histcmp.cli:app'
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
 
 [dependency-groups]
 dev = [

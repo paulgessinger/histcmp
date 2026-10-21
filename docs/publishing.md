@@ -14,9 +14,12 @@ Before the first release, configure:
    - Workflow filename: `publish.yml`
    - Environment: `pypi`
 
-To release, update `project.version` in `pyproject.toml`, refresh `uv.lock` with
-`uv lock`, and commit the changes. Tag that commit with the matching version
-(for example, `v0.10.1`) and push the tag. Choose a version that has not already
+Versions are derived from Git tags using `hatch-vcs`. A clean checkout at
+`v0.12.0` builds version `0.12.0`; commits after a tag produce development
+versions. The workflow fetches the full Git history so tags are available.
+
+To release, tag the release commit (for example, `v0.12.0`) and push the tag.
+There is no version field or lockfile version to update. Choose a version that has not already
 been uploaded to PyPI; the workflow does not skip existing distributions.
 
 The build and publish jobs are separate. Only the publish job has permission
