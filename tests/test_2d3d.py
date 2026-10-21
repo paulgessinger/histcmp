@@ -1,4 +1,5 @@
 import io
+import json
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import unquote
@@ -19,7 +20,9 @@ def _report_images(output):
 
         def handle_starttag(self, tag, attrs):
             if tag == "img":
-                self.sources.append(dict(attrs)["src"])
+                attributes = dict(attrs)
+                assert "src" not in attributes
+                self.sources.append(attributes["data-src"])
 
     parser = Images()
     parser.feed(output.read_text())
@@ -109,19 +112,33 @@ def test_identical_files_2d3d(root_files, tmp_path, renderer_3d, jobs):
 
 
 @pytest.mark.parametrize("jobs", [1, 2])
-def test_default_plot_directory(root_files, tmp_path, monkeypatch, jobs):
+@pytest.mark.parametrize("extension", ["yaml", "toml"])
+def test_default_plot_directory(root_files, tmp_path, monkeypatch, jobs, extension):
+    from test_report import ReportParser
+
     monkeypatch.chdir(tmp_path)
     output = Path("reports") / "comparison.html"
+    config = tmp_path / f"config.{extension}"
+    config.write_text(
+        'checks:\n  "*":\n    IntegralCheck:\n      threshold: 3\n'
+        'report:\n  tags:\n    Example: ["th*"]\n'
+        if extension == "yaml" else
+        '[checks."*".IntegralCheck]\nthreshold = 3\n'
+        '[report.tags]\nExample = ["th*"]\n'
+    )
     histcmp.cli.main(
         root_files["nominal"],
         root_files["same"],
         output=output,
+        config_path=config,
         jobs=jobs,
         _filter="^th1$",
     )
     sources, paths = _report_images(output)
     assert sources == ["comparison_plots/th1.png"]
     assert paths == [(output.parent / "comparison_plots" / "th1.png").resolve()]
+    metadata = json.loads(ReportParser(output.read_text()).metadata)
+    assert metadata["items"][0]["tags"] == ["Example"]
 
 
 def test_comparison_metric_fallback():

@@ -6,6 +6,7 @@ from typing import Union, Optional
 import contextlib
 import re
 from urllib.parse import quote
+from fnmatch import fnmatchcase
 from rich.progress import track
 from rich.emoji import Emoji
 
@@ -13,6 +14,7 @@ import jinja2
 
 from histcmp.compare import Comparison
 from histcmp.checks import Status
+from histcmp.config import ReportConfig
 from histcmp.console import console
 from histcmp.root_helpers import push_root_level
 from histcmp import icons
@@ -149,6 +151,7 @@ def make_report(
     comparison: Comparison,
     output: Path,
     plot_dir: Optional[Path] = None,
+    report_config: Optional[ReportConfig] = None,
 ):
     output.parent.mkdir(exist_ok=True, parents=True)
     plot_dir = report_plot_directory(output, plot_dir)
@@ -157,6 +160,19 @@ def make_report(
     #  copy_static(output)
 
     env = make_environment()
+    report_config = report_config or ReportConfig()
+    index = [
+        {
+            "id": f"plot-{i}",
+            "title": item.key,
+            "status": item.status.name.lower(),
+            "tags": [
+                name for name, patterns in report_config.tags.items()
+                if any(fnmatchcase(item.key, pattern) for pattern in patterns)
+            ],
+        }
+        for i, item in enumerate(comparison.items)
+    ]
 
     import ROOT
 
@@ -177,6 +193,9 @@ def make_report(
     with output.open("w") as fh:
         fh.write(
             env.get_template("main.html.j2").render(
-                comparison=comparison, plot_url=plot_url
+                comparison=comparison,
+                plot_url=plot_url,
+                report_index=index,
+                tags=list(report_config.tags),
             )
         )

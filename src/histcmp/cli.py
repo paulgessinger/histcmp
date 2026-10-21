@@ -9,7 +9,6 @@ from rich.rule import Rule
 from rich.pretty import Pretty
 from rich.emoji import Emoji
 import jinja2
-import yaml
 
 from histcmp.console import fail, info, console
 from histcmp.report import make_report, report_plot_directory
@@ -46,7 +45,7 @@ def main(
             "--config", "-c", 
             dir_okay=False, 
             exists=True,
-            help="Path to configuration file"
+            help="Path to YAML or TOML configuration file (.toml selects TOML)"
         )
     ] = None,
     output: Annotated[
@@ -178,8 +177,10 @@ def main(
             }
         )
     else:
-        with config_path.open() as fh:
-            config = Config(**yaml.safe_load(fh))
+        try:
+            config = Config.from_file(config_path)
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc), param_hint="--config") from exc
 
     if renderer_3d is not None:
         config.plots.renderer_3d = renderer_3d
@@ -308,7 +309,7 @@ def main(
         )
 
         if output is not None:
-            make_report(comparison, output, plots)
+            make_report(comparison, output, plots, report_config=config.report)
 
         if status != Status.SUCCESS:
             raise typer.Exit(1)
