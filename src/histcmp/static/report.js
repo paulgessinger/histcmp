@@ -410,13 +410,6 @@
     const expanded = controls.classList.toggle("filters-expanded");
     event.target.setAttribute("aria-expanded", String(expanded));
   });
-  function controlsResized() {
-    const sticky = getComputedStyle(controls).position === "sticky";
-    document.documentElement.style.setProperty("--controls-height", `${sticky ? controls.getBoundingClientRect().height : 0}px`);
-  }
-  if ("ResizeObserver" in window) new ResizeObserver(controlsResized).observe(controls);
-  else window.addEventListener("resize", controlsResized);
-  controlsResized();
   document.getElementById("clear-filters").addEventListener("click", clearFilters);
   window.addEventListener("hashchange", showLinkedPlot);
   window.addEventListener("popstate", () => {

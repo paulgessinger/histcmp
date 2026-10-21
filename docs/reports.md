@@ -10,7 +10,7 @@ Search titles performs a case-insensitive substring search on histogram names
 Clear filters restores all results. Results form one continuous scrolling grid
 that adapts from three columns on a
 wide display to one on a phone. All, Failed, Passed, and Inconclusive are visible
-status buttons with compact padding. Filters stay visible while scrolling; on
+status buttons with compact padding. Filters scroll with the page; on
 phones, Tags & sorting expands the secondary controls.
 
 Only cards near the viewport are mounted; lightweight placeholders preserve the

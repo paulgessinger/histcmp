@@ -223,7 +223,8 @@ def check_report(browser, path):
     page.locator("#toggle-filters").click()
     page.evaluate("window.scrollTo(0, 1000)")
     expect(page.locator('[data-status="failure"]')).to_be_visible()
-    assert abs(page.locator(".report-controls").bounding_box()["y"]) < 2
+    assert page.locator(".report-controls").bounding_box()["y"] < 0
+    assert page.locator(".report-controls").evaluate("el => getComputedStyle(el).position") == "static"
     page.evaluate("window.scrollTo(0, 0)")
     wait_visible_images()
     page.screenshot(path=str(path.with_suffix(".mobile.png")))

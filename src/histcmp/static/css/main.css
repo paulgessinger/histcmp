@@ -69,7 +69,7 @@ summary { cursor: pointer; }
 .report-summary details { max-width: 100%; overflow-wrap: anywhere; }
 .report-summary details[open] { flex-basis: 100%; background: white; padding: .5rem; }
 .report-summary ul { max-height: 12rem; overflow: auto; padding: .5rem 1rem; }
-.report-controls { position: sticky; top: .5rem; z-index: 10; box-shadow: 0 3px 12px #24324712; }
+.report-controls { box-shadow: 0 3px 12px #24324712; }
 .status-options { gap: .4rem; margin-top: .65rem; }
 .status-options .button { height: auto; min-height: 1.85rem; padding: .15rem .55rem; font-size: .85rem; }
 [data-count-status], [data-count-tag] { margin-left: .25rem; font-variant-numeric: tabular-nums; opacity: .8; }
@@ -81,7 +81,7 @@ summary { cursor: pointer; }
 .view-options .button, #toggle-filters { height: auto; min-height: 1.85rem; padding: .2rem .55rem; font-size: .85rem; }
 .view-options [aria-pressed="true"] { background: #dceaff; border-color: #3273dc; }
 #toggle-filters { display: none; }
-.plot-slot { scroll-margin-top: calc(var(--controls-height, 0px) + 1.5rem); }
+.plot-slot { scroll-margin-top: 1.5rem; }
 .plot-container.overview-mode { display: block; grid-template-columns: none; column-gap: 0; }
 .overview-row { display: grid; grid-template-columns: 2fr .75fr 1.25fr 2fr; gap: .75rem; align-items: start; }
 #overview-header { font-weight: 600; font-size: .85rem; padding: .75rem; background: #e9eef5; }
@@ -99,7 +99,7 @@ body.viewer-open { overflow: hidden; }
 .viewer-image { max-width: 100%; height: 100%; object-fit: contain; }
 #viewer-position { font-variant-numeric: tabular-nums; }
 @media (max-width: 700px) {
-  .report-controls { padding: .65rem; top: 0; }
+  .report-controls { padding: .65rem; }
   .filter-fields { gap: .4rem; }
   .filter-fields > .search-field { flex: 1; min-width: 0; }
   .filter-fields .input { height: 2rem; font-size: .85rem; }
@@ -114,7 +114,4 @@ body.viewer-open { overflow: hidden; }
   .overview-cell::before { content: attr(data-label) ": "; font-weight: 600; font-size: .8rem; }
   .viewer-toolbar .button { font-size: .8rem; padding: .3rem .5rem; }
   #plot-viewer { padding: .6rem; }
-}
-@media (max-height: 600px) {
-  .report-controls { position: static; }
 }
