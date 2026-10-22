@@ -115,3 +115,6 @@ body.viewer-open { overflow: hidden; }
   .viewer-toolbar .button { font-size: .8rem; padding: .3rem .5rem; }
   #plot-viewer { padding: .6rem; }
 }
+
+.plot-images canvas { display: block; width: 100%; height: auto; }
+canvas.viewer-image { width: 100%; height: auto; }

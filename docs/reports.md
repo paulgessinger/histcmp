@@ -31,6 +31,33 @@ or opening a shared URL restores those filters, including with `file://` reports
 Plot heading links keep the filters and add a fragment identifying the plot.
 Clear filters removes the filter parameters but keeps the chosen sorting and view.
 
+## Experimental JavaScript plots
+
+SVG remains the default. Add `--js-plots` to try a self-contained HTML report:
+
+```sh
+histcmp monitored.root reference.root -o report.html --js-plots --jobs 4
+```
+
+The equivalent configuration is `plots.js_plots: true` in YAML or
+`js_plots = true` under `[plots]` in TOML. No external plot files are needed in
+this mode; the plot directory may be created but remains empty.
+
+Python and Matplotlib still compute comparisons, uncertainties, layout, ticks,
+color scales, text outlines, and 3D projections. A bundled JavaScript canvas
+renderer replays gzip-compressed drawing commands as cards enter the viewport.
+This supports 1D histograms, efficiencies, 2D maps, and 3D scatter/voxel plots.
+The 3D view is fixed, just like the SVG output; there is no interactive rotation.
+Canvas plots redraw at the display resolution when resized or opened in the
+viewer. The viewer's external SVG link is omitted in this mode.
+
+Opening the report directly with `file://` works without a server or CDN. A
+browser supporting `DecompressionStream`, `Path2D`, and `DOMMatrix` is required.
+If decompression is unavailable, the report displays an error with instructions
+to use the default SVG output. Dense 3D drawings can take longer to generate and
+render, and data size depends on the plot; this mode is experimental rather than
+a guaranteed size reduction. Python calculations retain their full precision.
+
 ## Summary, sorting, and overview
 
 The full comparison summary always shows totals before report filters. Expand
@@ -111,6 +138,9 @@ With Playwright and its Chromium browser installed in a Python environment, run
 continuous scrolling, filter counts, sorting, overview, image viewer, URL restoration,
 mobile layout, and the lazy-loading fallback, and writes
 desktop, mobile, overview, and viewer screenshots beside nonempty reports.
+For a nonempty `--js-plots` report, use
+`python tests/jsplot_browser.py report.html` to check canvas rendering, the
+viewer, offline loading, and browser capability fallbacks.
 
 ## Preview
 

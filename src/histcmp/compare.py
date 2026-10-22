@@ -12,6 +12,7 @@ from rich.panel import Panel
 from histcmp.console import console, fail, info, good, warn
 from histcmp.root_helpers import convert_hist
 from histcmp.plot import render_plots, PlotSpec
+from histcmp.jsplot import JSPlot
 from histcmp import icons
 import histcmp.checks
 from histcmp.github import is_github_actions, github_actions_marker
@@ -43,7 +44,7 @@ class ComparisonItem:
         self.item_a = item_a
         self.item_b = item_b
         self.plots = plots if plots is not None else PlotConfig()
-        self._generic_plots: Optional[List[Path]] = None
+        self._generic_plots: Optional[List[Path | JSPlot]] = None
         self.checks = []
 
     @functools.cached_property
@@ -72,7 +73,8 @@ class ComparisonItem:
             # already rendered, e.g. by a worker process during compare()
             return
         self._generic_plots = render_plots(
-            self.plot_specs(), self.key, label_a, label_b, plot_dir
+            self.plot_specs(), self.key, label_a, label_b, plot_dir,
+            js_plots=self.plots.js_plots,
         )
 
     @property
@@ -82,7 +84,7 @@ class ComparisonItem:
                 return i
 
     @property
-    def generic_plots(self) -> List[Path]:
+    def generic_plots(self) -> List[Path | JSPlot]:
         return self._generic_plots or []
 
 

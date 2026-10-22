@@ -52,6 +52,7 @@ class PlotConfig(BaseModel):
         validate_default=True,
     )
 
+    js_plots: bool = False
     renderer_3d: Renderer3D = Renderer3D.voxel
     # comparison panel metric
     comparison: ComparisonMetric = ComparisonMetric.ratio

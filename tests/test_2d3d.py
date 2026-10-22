@@ -474,3 +474,23 @@ def test_voxel_fallback_to_scatter(capsys):
 
     for _, fig in figs:
         pyplot.close(fig)
+
+
+@pytest.mark.parametrize("jobs", [1, 2])
+def test_js_report_is_self_contained(root_files, tmp_path, jobs):
+    import base64
+    import gzip
+    import re
+
+    output = tmp_path / "report.html"
+    histcmp.cli.main(root_files["nominal"], root_files["same"],
+                     output=output, js_plots=True, jobs=jobs)
+    html = output.read_text()
+    payloads = re.findall(r'type="application/octet-stream">([^<]+)</script>', html)
+    assert len(payloads) == 13
+    assert html.count('<canvas data-plot=') == 13
+    assert 'data-src=' not in html
+    assert not list(tmp_path.rglob("*.svg"))
+    for payload in payloads:
+        data = json.loads(gzip.decompress(base64.b64decode(payload)))
+        assert data["commands"]

@@ -68,6 +68,7 @@ def process_item(key: str, path_a: str, path_b: str):
         _label_a,
         _label_b,
         _plot_dir,
+        js_plots=_config.plots.js_plots,
     )
 
     return checks, plots
