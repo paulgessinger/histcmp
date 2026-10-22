@@ -1,6 +1,11 @@
 # Browsing reports
 
-Open the generated HTML directly in a browser, or serve it with the PNG directory.
+Open the generated HTML directly in a browser, or serve it with the SVG directory.
+
+Plots are external SVG files. Text, axes and 1D curves remain vectors; 2D
+heatmaps and 3D scatter/voxel data are embedded raster layers at 120 dpi.
+This keeps labels sharp when zooming while limiting the size of dense plots.
+Publish the HTML and its sibling `<report-stem>_plots/` directory together.
 All report scripts, styles, and search data are embedded; no server, CDN, or network
 request is needed for the controls. Keep the relative paths to the images intact
 when copying a report.
@@ -18,7 +23,7 @@ scrolling space for the rest. Images are requested as they approach the
 viewport; browsers without `IntersectionObserver` use native lazy loading.
 Click an image for a larger in-page viewer. Left/right arrow keys move through
 images in the current filtered order; Escape closes it and returns focus.
-“Open original PNG” opens the image separately. Expand a check to read its
+“Open original SVG” opens the image separately. Expand a check to read its
 details, or copy a histogram heading's link to share its position.
 
 Search text, selected tags, Untagged, status, sorting, and view are stored in the URL. Reloading

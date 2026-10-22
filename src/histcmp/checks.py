@@ -88,7 +88,7 @@ class CompatCheck(ABC):
     def ensure_plot(self, key: str, report_dir: Path, plot_dir: Path) -> Optional[Path]:
         if self._plot is not None:
             return self._plot
-        rel_path = plot_dir / f"{key}_{self}.png"
+        rel_path = plot_dir / f"{key}_{self}.svg"
         if (report_dir / rel_path).exists():
             self._plot = rel_path
             return self._plot

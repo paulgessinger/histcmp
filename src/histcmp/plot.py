@@ -347,6 +347,8 @@ def plot_3d_scatter(
 
     max_marker_area = 60.0  # pt^2
     min_marker_area = 1.0  # keep low bins visible
+    # Rasterize only the data collection: labels, axes and ticks remain SVG
+    # paths. Native mixed-mode rendering also preserves 3D depth ordering.
 
     def marker_area(v):
         return numpy.clip(
@@ -369,6 +371,7 @@ def plot_3d_scatter(
             alpha=0.5,
             edgecolors="none",
             linewidths=0,
+            rasterized=True,
         )
         fig.colorbar(sc, ax=ax, label=a.label or "entries", shrink=0.7, pad=0.1)
         figs.append((suffix, fig))
@@ -389,6 +392,7 @@ def plot_3d_scatter(
         alpha=0.7,
         edgecolors="none",
         linewidths=0,
+        rasterized=True,
     )
     fig.colorbar(sc, ax=ax, label=data.label, shrink=0.7, pad=0.1)
     figs.append((f"_{comparison}", fig))
@@ -434,7 +438,9 @@ def plot_3d_voxel(
         scale = value_norm(numpy.abs(v))
         colors = cmap(scale)
         colors[..., 3] = numpy.clip(scale, 0.05, 0.6)
-        ax.voxels(X, Y, Z, filled, facecolors=colors, edgecolors=None)
+        ax.voxels(
+            X, Y, Z, filled, facecolors=colors, edgecolors=None, rasterized=True
+        )
         fig.colorbar(
             matplotlib.cm.ScalarMappable(norm=value_norm, cmap=cmap),
             ax=ax,
@@ -450,7 +456,9 @@ def plot_3d_voxel(
     colors = metric_cmap(data.norm(data.values.filled(data.center)))
     colors[..., 3] = 0.5
     fig, ax = _new_3d_panel(a, data.label)
-    ax.voxels(X, Y, Z, filled, facecolors=colors, edgecolors=None)
+    ax.voxels(
+        X, Y, Z, filled, facecolors=colors, edgecolors=None, rasterized=True
+    )
     fig.colorbar(
         matplotlib.cm.ScalarMappable(norm=data.norm, cmap=metric_cmap),
         ax=ax,
@@ -482,7 +490,7 @@ class PlotSpec:
 def render_plots(specs, key, label_a, label_b, plot_dir: Path) -> list[Path]:
     """
     Render the plot specs produced by ComparisonItem.plot_specs and return the
-    paths to PNG files. Each figure is saved once and linked from the report.
+    paths to SVG files. Each figure is saved once and linked from the report.
 
     This function only handles picklable inputs and does not need ROOT, so it
     can run in a worker process.
@@ -535,8 +543,8 @@ def render_plots(specs, key, label_a, label_b, plot_dir: Path) -> list[Path]:
         for fig_suffix, fig in figures:
             try:
                 safe_key = key.replace("/", "_") + fig_suffix
-                path = plot_dir / f"{safe_key}.png"
-                fig.savefig(path, format="png", dpi=120)
+                path = plot_dir / f"{safe_key}.svg"
+                fig.savefig(path, format="svg", dpi=120)
                 paths.append(path)
             except ValueError as e:
                 rich.print(f"ERROR during plot: {e}")

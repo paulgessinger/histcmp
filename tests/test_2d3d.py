@@ -31,8 +31,8 @@ def _report_images(output):
     assert all(not src.startswith(("data:", "/")) for src in parser.sources)
     paths = [(output.parent / unquote(src)).resolve() for src in parser.sources]
     for path in paths:
-        assert path.suffix == ".png"
-        assert path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+        assert path.suffix == ".svg"
+        assert b"<svg" in path.read_bytes()
     return parser.sources, paths
 
 
@@ -93,15 +93,15 @@ def test_identical_files_2d3d(root_files, tmp_path, renderer_3d, jobs):
         root_files["same"],
         output=output,
         plots=plots,
-        format="png",
+        format="svg",
         jobs=jobs,
         renderer_3d=renderer_3d,
     )
 
     assert output.exists()
-    plot_files = sorted(p.name for p in plots.glob("*.png"))
-    expected = ["th1.png"] + sorted(
-        f"{key}_{panel}.png"
+    plot_files = sorted(p.name for p in plots.glob("*.svg"))
+    expected = ["th1.svg"] + sorted(
+        f"{key}_{panel}.svg"
         for key in ["th2", "tp2", "th3", "tp3"]
         # 2D/3D comparison panels default to the pull metric
         for panel in ["monitored", "reference", "pull"]
@@ -109,7 +109,7 @@ def test_identical_files_2d3d(root_files, tmp_path, renderer_3d, jobs):
     assert plot_files == sorted(expected)
     sources, paths = _report_images(output)
     assert all(src.startswith("../plot%20images%20%231/") for src in sources)
-    assert sorted(paths) == sorted(plots.glob("*.png"))
+    assert sorted(paths) == sorted(plots.glob("*.svg"))
 
 
 @pytest.mark.parametrize("jobs", [1, 2])
@@ -136,8 +136,8 @@ def test_default_plot_directory(root_files, tmp_path, monkeypatch, jobs, extensi
         _filter="^th1$",
     )
     sources, paths = _report_images(output)
-    assert sources == ["comparison_plots/th1.png"]
-    assert paths == [(output.parent / "comparison_plots" / "th1.png").resolve()]
+    assert sources == ["comparison_plots/th1.svg"]
+    assert paths == [(output.parent / "comparison_plots" / "th1.svg").resolve()]
     metadata = json.loads(ReportParser(output.read_text()).metadata)
     assert metadata["items"][0]["tags"] == ["Example"]
     assert metadata["items"][0]["checks"][0]["sortValue"] == 0
@@ -164,14 +164,14 @@ def test_comparison_metric_2d3d_override(root_files, tmp_path):
         root_files["same"],
         output=output,
         plots=plots,
-        format="png",
+        format="svg",
         comparison="pull",
         comparison_2d3d="residual",
     )
 
-    assert (plots / "th2_residual.png").exists()
-    assert (plots / "th3_residual.png").exists()
-    assert not (plots / "th2_pull.png").exists()
+    assert (plots / "th2_residual.svg").exists()
+    assert (plots / "th3_residual.svg").exists()
+    assert not (plots / "th2_pull.svg").exists()
 
 
 @pytest.mark.parametrize(
@@ -191,12 +191,12 @@ def test_disable_2d_3d(root_files, tmp_path, enable_2d, enable_3d, expected_keys
         root_files["same"],
         output=output,
         plots=plots,
-        format="png",
+        format="svg",
         enable_2d=enable_2d,
         enable_3d=enable_3d,
     )
 
-    plotted_keys = sorted({p.stem.split("_")[0] for p in plots.glob("*.png")})
+    plotted_keys = sorted({p.stem.split("_")[0] for p in plots.glob("*.svg")})
     assert plotted_keys == sorted(expected_keys)
 
 
@@ -207,7 +207,7 @@ def test_shifted_files_fail(root_files, tmp_path):
             root_files["shifted"],
             output=tmp_path / "report.html",
             plots=tmp_path / "plots",
-            format="png",
+            format="svg",
         )
 
 
@@ -372,8 +372,8 @@ def test_plot_functions(plotter, case):
 
     for _, fig in figs:
         image = io.BytesIO()
-        fig.savefig(image, format="png", dpi=120)
-        assert image.getvalue().startswith(b"\x89PNG\r\n\x1a\n")
+        fig.savefig(image, format="svg", dpi=120)
+        assert b"<svg" in image.getvalue()
 
         pyplot.close(fig)
 
@@ -418,8 +418,8 @@ def test_plot_1d_comparison_metrics(comparison):
 
     fig, (ax, rax) = plot.plot_1d(a, b, "monitored", "reference", comparison)
     image = io.BytesIO()
-    fig.savefig(image, format="png", dpi=120)
-    assert image.getvalue().startswith(b"\x89PNG\r\n\x1a\n")
+    fig.savefig(image, format="svg", dpi=120)
+    assert b"<svg" in image.getvalue()
 
     pyplot.close(fig)
 

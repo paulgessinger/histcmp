@@ -61,7 +61,7 @@ def main(
         typer.Option(
             "-p", "--plots", 
             file_okay=False,
-            help="Directory to save PNG plots (default: <report-stem>_plots beside the report)"
+            help="Directory to save SVG plots (default: <report-stem>_plots beside the report)"
         )
     ] = None,
     label_monitored: Annotated[
@@ -92,9 +92,9 @@ def main(
     format: Annotated[
         str,
         typer.Option(
-            help="Output format for plots (only png is supported)"
+            help="Output format for plots (only svg is supported)"
         )
-    ] = "png",
+    ] = "svg",
     jobs: Annotated[
         int,
         typer.Option(
@@ -143,9 +143,9 @@ def main(
         )
     ] = True,
 ):
-    if format != "png":
+    if format != "svg":
         raise typer.BadParameter(
-            "Only PNG plots are supported", param_hint="--format"
+            "Only SVG plots are supported", param_hint="--format"
         )
 
     try:
