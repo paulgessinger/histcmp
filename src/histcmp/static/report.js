@@ -27,7 +27,7 @@
 
   for (const item of items) {
     item.template = document.getElementById(`template-${item.id}`);
-    item.images = [...item.template.content.querySelectorAll("img")].map(img => img.dataset.src);
+    item.images = [...item.template.content.querySelectorAll("img, canvas[data-plot]")].map(img => img.dataset.plot ? `#${img.dataset.plot}` : img.dataset.src);
     item.imageCount = item.images.length;
     item.ranks = new Map(item.checks.map(check => [check.name, check.sortValue]));
     item.checkCount = item.template.content.querySelectorAll(".check").length;
@@ -95,10 +95,18 @@
   function showImage() {
     const current = gallery[galleryIndex];
     document.getElementById("viewer-title").textContent = `${current.item.title} — image ${current.index + 1}/${current.item.images.length}`;
-    const img = element("img", "viewer-image");
+    const jsPlot = current.url.startsWith("#js-plot-");
+    const img = element(jsPlot ? "canvas" : "img", "viewer-image");
     img.alt = document.getElementById("viewer-title").textContent;
-    img.src = current.url;
+    if (jsPlot) {
+      img.dataset.plot = current.url.slice(1);
+      img.setAttribute("role", "img");
+      img.setAttribute("aria-label", img.alt);
+    } else img.src = current.url;
+    for (const canvas of document.querySelectorAll("#viewer-content canvas")) window.histcmpCanvas.unmount(canvas);
     document.getElementById("viewer-content").replaceChildren(img);
+    if (jsPlot) window.histcmpCanvas.mount(img);
+    document.getElementById("viewer-original").hidden = jsPlot;
     document.getElementById("viewer-position").textContent = `${galleryIndex + 1} / ${gallery.length}`;
     document.getElementById("viewer-original").href = current.url;
     document.getElementById("viewer-previous").disabled = galleryIndex === 0;
@@ -129,6 +137,7 @@
   });
   viewer.addEventListener("close", () => {
     document.body.classList.remove("viewer-open");
+    for (const canvas of document.querySelectorAll("#viewer-content canvas")) window.histcmpCanvas.unmount(canvas);
     document.getElementById("viewer-content").replaceChildren();
     gallery = [];
     (viewerFocus?.isConnected ? viewerFocus : search).focus({preventScroll: true});
@@ -166,6 +175,7 @@
     }
     const open = expandedChecks.get(item.id) || [];
     slot.querySelectorAll(".check").forEach((check, index) => { check.open = open.includes(index); });
+    for (const canvas of slot.querySelectorAll("canvas[data-plot]")) window.histcmpCanvas.mount(canvas);
     for (const img of slot.querySelectorAll("img[data-src]")) {
       if (imageObserver) imageObserver.observe(img);
       else loadImage(img);
@@ -184,6 +194,7 @@
     for (const img of slot.querySelectorAll("img")) {
       if (imageObserver) imageObserver.unobserve(img);
     }
+    for (const canvas of slot.querySelectorAll("canvas[data-plot]")) window.histcmpCanvas.unmount(canvas);
     slot.replaceChildren();
   }
 

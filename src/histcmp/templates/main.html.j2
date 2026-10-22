@@ -82,7 +82,8 @@
     </dialog>
     {# Inert templates are mounted near the viewport; placeholders retain scroll positions. #}
     {% for item in comparison.items %}
-    <template id="template-plot-{{ loop.index0 }}">
+    {% set item_index = loop.index0 %}
+    <template id="template-plot-{{ item_index }}">
         <article class="box plot" id="plot-{{ loop.index0 }}">
             <header class="plot-header">
                 <span class="status-badge status-{{ item.status.name | lower }}">
@@ -101,12 +102,21 @@
             </header>
             <div class="plot-images">
                 {% for plot in item.generic_plots %}
+                {% if is_js_plot(plot) %}
+                <a href="#plot-{{ item_index }}" data-image-index="{{ loop.index0 }}"
+                    aria-label="Open {{ item.key | e }} plot {{ loop.index }} at full size">
+                    <canvas data-plot="js-plot-{{ item_index }}-{{ loop.index0 }}"
+                        width="{{ plot.width }}" height="{{ plot.height }}"
+                        role="img" aria-label="{{ item.key | e }} — plot {{ loop.index }}"></canvas>
+                </a>
+                {% else %}
                 <a href="{{ plot_url(plot) | e }}" data-image-index="{{ loop.index0 }}" target="_blank" rel="noopener"
                     aria-label="Open {{ item.key | e }} image {{ loop.index }} at full size">
                     <img data-src="{{ plot_url(plot) | e }}" loading="lazy" decoding="async"
                         width="720" height="600"
                         alt="{{ item.key | e }} — image {{ loop.index }}" />
                 </a>
+                {% endif %}
                 {% endfor %}
             </div>
             <div class="checks">
@@ -128,6 +138,17 @@
         </article>
     </template>
     {% endfor %}
+    {% if has_js_plots %}
+    {% for item in comparison.items %}
+    {% set item_index = loop.index0 %}
+    {% for plot in item.generic_plots %}
+    {% if is_js_plot(plot) %}
+    <script id="js-plot-{{ item_index }}-{{ loop.index0 }}" type="application/octet-stream">{{ plot.payload }}</script>
+    {% endif %}
+    {% endfor %}
+    {% endfor %}
+    <script>{{ static_content("jsplot.js") }}</script>
+    {% endif %}
     <script id="report-data" type="application/json">{{ {"items": report_index, "tags": tags} | tojson }}</script>
     <script>{{ static_content("report.js") }}</script>
 {% endblock %}

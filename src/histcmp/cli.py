@@ -95,6 +95,9 @@ def main(
             help="Output format for plots (only svg is supported)"
         )
     ] = "svg",
+    js_plots: Annotated[
+        bool, typer.Option("--js-plots", help="Experimental self-contained canvas plots; Python computes all drawing data")
+    ] = False,
     jobs: Annotated[
         int,
         typer.Option(
@@ -182,6 +185,8 @@ def main(
         except ValueError as exc:
             raise typer.BadParameter(str(exc), param_hint="--config") from exc
 
+    if js_plots:
+        config.plots.js_plots = True
     if renderer_3d is not None:
         config.plots.renderer_3d = renderer_3d
     if comparison is not None:

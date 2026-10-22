@@ -15,6 +15,7 @@ import matplotlib.colors
 from matplotlib import pyplot
 
 from histcmp.console import warn
+from histcmp.jsplot import JSPlot, render_canvas
 
 pyplot.rcParams.update(
     {
@@ -487,10 +488,10 @@ class PlotSpec:
     renderer: Optional[str] = None  # only for "3d"
     comparison: str = "ratio"
 
-def render_plots(specs, key, label_a, label_b, plot_dir: Path) -> list[Path]:
+def render_plots(specs, key, label_a, label_b, plot_dir: Path, *, js_plots: bool = False) -> list[Path | JSPlot]:
     """
     Render the plot specs produced by ComparisonItem.plot_specs and return the
-    paths to SVG files. Each figure is saved once and linked from the report.
+    paths to SVG files, or compressed JSPlot payloads for the report.
 
     This function only handles picklable inputs and does not need ROOT, so it
     can run in a worker process.
@@ -542,11 +543,16 @@ def render_plots(specs, key, label_a, label_b, plot_dir: Path) -> list[Path]:
 
         for fig_suffix, fig in figures:
             try:
+                if js_plots:
+                    paths.append(render_canvas(fig))
+                    continue
                 safe_key = key.replace("/", "_") + fig_suffix
                 path = plot_dir / f"{safe_key}.svg"
                 fig.savefig(path, format="svg", dpi=120)
                 paths.append(path)
             except ValueError as e:
+                if js_plots:
+                    raise
                 rich.print(f"ERROR during plot: {e}")
             finally:
                 pyplot.close(fig)

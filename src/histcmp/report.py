@@ -14,6 +14,7 @@ from rich.emoji import Emoji
 
 import jinja2
 
+from histcmp.jsplot import JSPlot
 from histcmp.compare import Comparison
 from histcmp.checks import Status
 from histcmp.config import ReportConfig
@@ -213,6 +214,8 @@ def make_report(
         fh.write(
             env.get_template("main.html.j2").render(
                 comparison=comparison,
+                is_js_plot=lambda plot: isinstance(plot, JSPlot),
+                has_js_plots=any(isinstance(plot, JSPlot) for item in comparison.items for plot in item.generic_plots),
                 plot_url=plot_url,
                 report_index=index,
                 tags=list(report_config.tags),
